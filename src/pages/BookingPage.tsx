@@ -1,0 +1,1153 @@
+import React, { useState } from 'react';
+import { PageView, LanguageMode, SessionMode, BookingDetails } from '../types';
+import { pricingPackages, mentorData } from '../data/mentorData';
+import {
+  Calendar as CalendarIcon,
+  Clock,
+  Video,
+  Phone,
+  CheckCircle2,
+  Lock,
+  ArrowRight,
+  ArrowLeft,
+  Sparkles,
+  ShieldCheck,
+  User,
+  Mail,
+  Smartphone,
+  MessageSquare,
+  Copy,
+  ExternalLink,
+  CalendarPlus,
+  Download,
+  Share2,
+  CreditCard,
+  QrCode,
+  Check,
+  Send,
+  Info,
+} from 'lucide-react';
+
+interface BookingPageProps {
+  onNavigate: (page: PageView) => void;
+  lang: LanguageMode;
+  onBookingConfirmed: (booking: BookingDetails) => void;
+}
+
+export const BookingPage: React.FC<BookingPageProps> = ({
+  onNavigate,
+  lang,
+  onBookingConfirmed,
+}) => {
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+
+  // Form states
+  const [sessionMode, setSessionMode] = useState<SessionMode>('video');
+  const [selectedPackageId, setSelectedPackageId] = useState<string>('session-45');
+
+  const [formData, setFormData] = useState({
+    fullName: '',
+    age: '',
+    gender: '',
+    email: '',
+    phone: '',
+    countryCode: '+91',
+    preferredLanguage: 'Hindi' as 'Hindi' | 'Gujarati' | 'English' | 'Hinglish',
+    reasons: [] as string[],
+    notes: '',
+  });
+
+  const [selectedDate, setSelectedDate] = useState<string>('Tomorrow, Aug 27');
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>('3:00 PM - 3:45 PM');
+  const [paymentMethod, setPaymentMethod] = useState<'upi' | 'card' | 'netbanking'>('upi');
+  const [upiId, setUpiId] = useState<string>('');
+  const [isProcessingPayment, setIsProcessingPayment] = useState<boolean>(false);
+  const [confirmedBooking, setConfirmedBooking] = useState<BookingDetails | null>(null);
+
+  // UI helpers for confirmation
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedInvite, setCopiedInvite] = useState(false);
+  const [emailResent, setEmailResent] = useState(false);
+  const [whatsappResent, setWhatsappResent] = useState(false);
+  const [showEmailPreview, setShowEmailPreview] = useState(false);
+  const [showWhatsAppPreview, setShowWhatsAppPreview] = useState(false);
+
+  const reasonsList = [
+    'Stress & Overthinking',
+    'Life Direction & Purpose',
+    'Career Confusion',
+    'Difficult Decision Making',
+    'Emotional Support & Well-being',
+    'Personal Challenges',
+    'Relationships & Boundaries',
+    'Self-Confidence & Growth',
+    'Other / General Venting',
+  ];
+
+  const availableDates = [
+    { label: 'Today (Immediate)', date: 'Today, Aug 26' },
+    { label: 'Tomorrow', date: 'Tomorrow, Aug 27' },
+    { label: 'Thursday', date: 'Thu, Aug 28' },
+    { label: 'Friday', date: 'Fri, Aug 29' },
+    { label: 'Saturday', date: 'Sat, Aug 30' },
+  ];
+
+  const availableSlots = [
+    { time: '11:00 AM - 11:45 AM', period: 'Morning' },
+    { time: '12:30 PM - 1:15 PM', period: 'Afternoon' },
+    { time: '3:00 PM - 3:45 PM', period: 'Afternoon', popular: true },
+    { time: '5:30 PM - 6:15 PM', period: 'Evening' },
+    { time: '7:00 PM - 7:45 PM', period: 'Evening', popular: true },
+    { time: '8:30 PM - 9:15 PM', period: 'Night' },
+  ];
+
+  const toggleReason = (reason: string) => {
+    setFormData((prev) => {
+      const exists = prev.reasons.includes(reason);
+      if (exists) {
+        return { ...prev, reasons: prev.reasons.filter((r) => r !== reason) };
+      } else {
+        return { ...prev, reasons: [...prev.reasons, reason] };
+      }
+    });
+  };
+
+  const selectedPkg = pricingPackages.find((p) => p.id === selectedPackageId) || pricingPackages[1];
+
+  // Helper to generate Zoom details
+  const generateZoomDetails = () => {
+    const rawMeetingId = `${Math.floor(800 + Math.random() * 199)} ${Math.floor(1000 + Math.random() * 8999)} ${Math.floor(1000 + Math.random() * 8999)}`;
+    const passcode = `clarity${Math.floor(10 + Math.random() * 89)}`;
+    const joinUrl = `https://us05web.zoom.us/j/${rawMeetingId.replace(/\s/g, '')}?pwd=${btoa(passcode)}`;
+
+    return {
+      meetingId: rawMeetingId,
+      passcode,
+      joinUrl,
+    };
+  };
+
+  const handleCompletePaymentAndBooking = () => {
+    setIsProcessingPayment(true);
+
+    setTimeout(() => {
+      const zoom = generateZoomDetails();
+      const fullPhone = `${formData.countryCode} ${formData.phone.replace(/^[+]?\d{1,3}\s?/, '')}`;
+      const newBooking: BookingDetails = {
+        id: `booking-${Date.now()}`,
+        fullName: formData.fullName || 'Mentee Friend',
+        age: formData.age || '23',
+        gender: formData.gender,
+        email: formData.email || 'user@example.com',
+        phone: fullPhone || '+91 9876543210',
+        preferredLanguage: formData.preferredLanguage,
+        sessionMode,
+        packageType: {
+          title: selectedPkg.title,
+          duration: typeof selectedPkg.durationMinutes === 'number' ? `${selectedPkg.durationMinutes} mins` : selectedPkg.durationMinutes,
+          price: selectedPkg.price,
+          description: selectedPkg.subtitle,
+        },
+        preferredDate: selectedDate,
+        preferredTime: selectedTimeSlot,
+        reasons: formData.reasons.length > 0 ? formData.reasons : ['General Clarity & Emotional Support'],
+        notes: formData.notes,
+        status: 'confirmed',
+        createdAt: new Date().toISOString(),
+        meetingLink: zoom.joinUrl,
+        zoomMeetingId: zoom.meetingId,
+        zoomPasscode: zoom.passcode,
+        zoomJoinUrl: zoom.joinUrl,
+        emailSent: true,
+        whatsappSent: true,
+        paymentMethod: paymentMethod.toUpperCase(),
+        transactionId: `TXN-${Math.floor(100000000 + Math.random() * 900000000)}`,
+      };
+
+      setIsProcessingPayment(false);
+      setConfirmedBooking(newBooking);
+      onBookingConfirmed(newBooking);
+      setStep(4);
+    }, 1200);
+  };
+
+  const copyToClipboard = (text: string, type: 'link' | 'invite') => {
+    navigator.clipboard.writeText(text);
+    if (type === 'link') {
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2500);
+    } else {
+      setCopiedInvite(true);
+      setTimeout(() => setCopiedInvite(false), 2500);
+    }
+  };
+
+  const handleResendEmail = () => {
+    setEmailResent(true);
+    setTimeout(() => setEmailResent(false), 3000);
+  };
+
+  const handleResendWhatsApp = () => {
+    setWhatsappResent(true);
+    setTimeout(() => setWhatsappResent(false), 3000);
+  };
+
+  // Google Calendar Link generator
+  const getGoogleCalendarUrl = () => {
+    if (!confirmedBooking) return '#';
+    const title = encodeURIComponent(`1-to-1 Mentorship Session with Siddhi Patel`);
+    const details = encodeURIComponent(
+      `Join Zoom Meeting: ${confirmedBooking.zoomJoinUrl}\nMeeting ID: ${confirmedBooking.zoomMeetingId}\nPasscode: ${confirmedBooking.zoomPasscode}\n\nLanguage: ${confirmedBooking.preferredLanguage}\nOrganized by SupportSystem`
+    );
+    const location = encodeURIComponent(confirmedBooking.zoomJoinUrl);
+    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&details=${details}&location=${location}`;
+  };
+
+  // .ICS file generator for offline calendars
+  const handleDownloadIcs = () => {
+    if (!confirmedBooking) return;
+    const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//SupportSystem//Mentorship Session//EN
+BEGIN:VEVENT
+SUMMARY:1-to-1 Mentorship Session with Siddhi Patel
+DESCRIPTION:Zoom Meeting: ${confirmedBooking.zoomJoinUrl}\\nMeeting ID: ${confirmedBooking.zoomMeetingId}\\nPasscode: ${confirmedBooking.zoomPasscode}
+LOCATION:${confirmedBooking.zoomJoinUrl}
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR`;
+
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `supportsystem-session-${confirmedBooking.id}.ics`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  return (
+    <div id="booking-page-container" className="max-w-4xl mx-auto px-4 sm:px-6 py-10 space-y-8">
+      {/* Title Header */}
+      <div className="text-center space-y-2">
+        <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-[#f4ece1] text-[#dc3c1c] text-xs font-bold uppercase tracking-wider">
+          <Sparkles className="w-3.5 h-3.5" /> 1-to-1 Private Mentorship via Zoom
+        </div>
+        <h1 className="text-2xl sm:text-3xl font-bold text-[#1c1a18]">
+          Book Your 1-to-1 Session With Siddhi Patel
+        </h1>
+        <p className="text-xs sm:text-sm text-[#5c544a] max-w-xl mx-auto">
+          Complete your booking and payment to automatically receive your private Zoom meeting link directly on Email & WhatsApp.
+        </p>
+      </div>
+
+      {/* Progress Steps Header */}
+      {step < 4 && (
+        <div className="flex items-center justify-between max-w-xl mx-auto px-4">
+          {[
+            { num: 1, label: 'Session & Mode' },
+            { num: 2, label: 'About You' },
+            { num: 3, label: 'Time & Payment' },
+          ].map((s) => (
+            <div key={s.num} className="flex items-center gap-2">
+              <div
+                className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                  step === s.num
+                    ? 'bg-[#dc3c1c] text-white ring-4 ring-[#dc3c1c]/20'
+                    : step > s.num
+                    ? 'bg-[#22201e] text-white'
+                    : 'bg-[#ebe4d8] text-[#70665c]'
+                }`}
+              >
+                {step > s.num ? '✓' : s.num}
+              </div>
+              <span
+                className={`text-xs hidden sm:inline font-semibold ${
+                  step === s.num ? 'text-[#1c1a18]' : 'text-stone-500'
+                }`}
+              >
+                {s.label}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* STEP 1: Select Mode and Duration */}
+      {step === 1 && (
+        <div className="bg-white rounded-3xl border border-[#e5dcce] p-6 sm:p-8 space-y-8 shadow-sm animate-fadeIn">
+          {/* Communication Mode Picker */}
+          <div className="space-y-3">
+            <label className="block text-xs font-bold uppercase tracking-wider text-[#1c1a18]">
+              1. Choose Preferred Communication Mode (On Zoom)
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <button
+                type="button"
+                id="mode-video-btn"
+                onClick={() => setSessionMode('video')}
+                className={`p-4 rounded-2xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
+                  sessionMode === 'video'
+                    ? 'border-[#dc3c1c] bg-[#fff6f4] ring-2 ring-[#dc3c1c]/20 shadow-sm'
+                    : 'border-stone-200 bg-[#fdfbf8] hover:border-stone-400'
+                }`}
+              >
+                <div className={`p-2.5 rounded-xl ${sessionMode === 'video' ? 'bg-[#dc3c1c] text-white' : 'bg-stone-200 text-stone-700'}`}>
+                  <Video className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <h4 className="font-bold text-sm text-[#1c1a18]">Zoom Video Call</h4>
+                    <span className="px-2 py-0.5 rounded-full bg-[#dc3c1c]/10 text-[#dc3c1c] text-[10px] font-bold">Recommended</span>
+                  </div>
+                  <p className="text-xs text-[#5b534a] mt-0.5 leading-relaxed">
+                    Face-to-face visual presence helps create a deeper, empathetic human connection. (Camera can be turned off anytime).
+                  </p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                id="mode-audio-btn"
+                onClick={() => setSessionMode('audio')}
+                className={`p-4 rounded-2xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
+                  sessionMode === 'audio'
+                    ? 'border-[#dc3c1c] bg-[#fff6f4] ring-2 ring-[#dc3c1c]/20 shadow-sm'
+                    : 'border-stone-200 bg-[#fdfbf8] hover:border-stone-400'
+                }`}
+              >
+                <div className={`p-2.5 rounded-xl ${sessionMode === 'audio' ? 'bg-[#dc3c1c] text-white' : 'bg-stone-200 text-stone-700'}`}>
+                  <Phone className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-[#1c1a18]">Zoom Audio Call</h4>
+                  <p className="text-xs text-[#5b534a] mt-0.5 leading-relaxed">
+                    Ideal if you prefer gentle audio-only comfort, speaking during a quiet evening walk, or feel shy on video.
+                  </p>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Package Selection */}
+          <div className="space-y-3">
+            <label className="block text-xs font-bold uppercase tracking-wider text-[#1c1a18]">
+              2. Select Session Package
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {pricingPackages.map((pkg) => {
+                const isSelected = selectedPackageId === pkg.id;
+                return (
+                  <div
+                    key={pkg.id}
+                    onClick={() => setSelectedPackageId(pkg.id)}
+                    className={`p-5 rounded-2xl border transition-all cursor-pointer relative flex flex-col justify-between ${
+                      isSelected
+                        ? 'border-[#dc3c1c] bg-[#fff9f8] ring-2 ring-[#dc3c1c]/20 shadow-sm'
+                        : 'border-stone-200 bg-white hover:border-stone-300'
+                    }`}
+                  >
+                    {pkg.popular && (
+                      <span className="absolute -top-2.5 right-4 bg-[#dc3c1c] text-white text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full shadow">
+                        Most Popular
+                      </span>
+                    )}
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-bold text-sm text-[#1c1a18]">{pkg.title}</h4>
+                        <div className="text-right">
+                          <span className="text-base font-extrabold text-[#dc3c1c]">₹{pkg.price}</span>
+                          {pkg.originalPrice && (
+                            <span className="text-xs text-stone-400 line-through ml-1.5">₹{pkg.originalPrice}</span>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-xs text-[#5a524a]">{pkg.subtitle}</p>
+
+                      <ul className="pt-2 space-y-1.5 text-xs text-[#4b443c]">
+                        {pkg.features.slice(0, 3).map((f, i) => (
+                          <li key={i} className="flex items-start gap-1.5">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-[#dc3c1c] flex-shrink-0 mt-0.5" />
+                            <span>{f}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="pt-4 mt-2 border-t border-stone-100 flex items-center justify-between">
+                      <span className="text-[11px] text-stone-500">{pkg.recommendedFor.slice(0, 45)}...</span>
+                      <span className={`text-xs font-bold ${isSelected ? 'text-[#dc3c1c]' : 'text-stone-400'}`}>
+                        {isSelected ? 'Selected' : 'Select'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-stone-200 flex justify-end">
+            <button
+              type="button"
+              id="booking-step1-next-btn"
+              onClick={() => setStep(2)}
+              className="px-6 py-3 rounded-xl bg-[#dc3c1c] hover:bg-[#c23214] text-white text-xs font-bold shadow transition-all flex items-center gap-2 cursor-pointer"
+            >
+              <span>Continue: Your Contact Details</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 2: Intake & About Yourself */}
+      {step === 2 && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setStep(3);
+          }}
+          className="bg-white rounded-3xl border border-[#e5dcce] p-6 sm:p-8 space-y-6 shadow-sm animate-fadeIn"
+        >
+          <div className="border-b border-stone-200 pb-4">
+            <h3 className="text-lg font-bold text-[#1c1a18]">Tell Us About Yourself</h3>
+            <p className="text-xs text-[#635a50]">
+              Your Zoom link will be sent automatically to the email address and WhatsApp number provided below.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-[#1c1a18] mb-1 flex items-center gap-1">
+                <User className="w-3.5 h-3.5 text-stone-500" /> Full Name *
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. Rahul Sharma"
+                value={formData.fullName}
+                onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-stone-300 bg-[#fdfbf8] focus:border-[#dc3c1c] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-[#1c1a18] mb-1">
+                Age * (Platform welcomes ages 12+)
+              </label>
+              <input
+                type="number"
+                min={12}
+                max={99}
+                required
+                placeholder="e.g. 23"
+                value={formData.age}
+                onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-stone-300 bg-[#fdfbf8] focus:border-[#dc3c1c] focus:outline-none"
+              />
+            </div>
+
+            {/* Email Address with Notice */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-[#1c1a18] flex items-center gap-1">
+                  <Mail className="w-3.5 h-3.5 text-stone-500" /> Email Address *
+                </label>
+                <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                  Instant Zoom link sent here
+                </span>
+              </div>
+              <input
+                type="email"
+                required
+                placeholder="you@domain.com"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-stone-300 bg-[#fdfbf8] focus:border-[#dc3c1c] focus:outline-none"
+              />
+            </div>
+
+            {/* Phone & WhatsApp Number with Notice */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-[#1c1a18] flex items-center gap-1">
+                  <Smartphone className="w-3.5 h-3.5 text-stone-500" /> WhatsApp Number *
+                </label>
+                <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                  WhatsApp reminder sent here
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <select
+                  value={formData.countryCode}
+                  onChange={(e) => setFormData({ ...formData, countryCode: e.target.value })}
+                  className="px-2.5 py-2.5 text-xs rounded-xl border border-stone-300 bg-[#f8f4ec] font-semibold focus:outline-none"
+                >
+                  <option value="+91">🇮🇳 +91 (India)</option>
+                  <option value="+1">🇺🇸 +1 (USA)</option>
+                  <option value="+44">🇬🇧 +44 (UK)</option>
+                  <option value="+971">🇦🇪 +971 (UAE)</option>
+                  <option value="+65">🇸🇬 +65 (Singapore)</option>
+                  <option value="+61">🇦🇺 +61 (Australia)</option>
+                  <option value="+1">🇨🇦 +1 (Canada)</option>
+                </select>
+                <input
+                  type="tel"
+                  required
+                  placeholder="98765 43210"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  className="flex-1 px-3.5 py-2.5 text-xs rounded-xl border border-stone-300 bg-[#fdfbf8] focus:border-[#dc3c1c] focus:outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Language Preference */}
+          <div>
+            <label className="block text-xs font-semibold text-[#1c1a18] mb-1.5">
+              Preferred Language for Session:
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {(['Hindi', 'Gujarati', 'English', 'Hinglish'] as const).map((langOpt) => (
+                <button
+                  key={langOpt}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, preferredLanguage: langOpt })}
+                  className={`py-2 px-3 rounded-xl text-xs font-semibold border transition-all ${
+                    formData.preferredLanguage === langOpt
+                      ? 'bg-[#22201e] text-white border-[#22201e]'
+                      : 'bg-[#fbf8f3] text-[#4d453d] border-stone-200 hover:bg-stone-100'
+                  }`}
+                >
+                  {langOpt}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Reason for seeking mentorship (Checkable Chips) */}
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold text-[#1c1a18]">
+              What would you like guidance with? (Select all that apply)
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {reasonsList.map((reason) => {
+                const isSelected = formData.reasons.includes(reason);
+                return (
+                  <button
+                    key={reason}
+                    type="button"
+                    onClick={() => toggleReason(reason)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      isSelected
+                        ? 'bg-[#dc3c1c] text-white shadow-sm'
+                        : 'bg-[#f4efe6] text-[#4f473e] hover:bg-stone-200'
+                    }`}
+                  >
+                    {isSelected ? '✓ ' : '+ '}
+                    {reason}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Brief Reflection Note */}
+          <div>
+            <label className="block text-xs font-semibold text-[#1c1a18] mb-1">
+              Tell us briefly what you'd like to talk about: (Optional)
+            </label>
+            <textarea
+              rows={3}
+              placeholder="e.g., I have been feeling anxious about choosing between two job paths and need a calm perspective..."
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-stone-300 bg-[#fdfbf8] focus:border-[#dc3c1c] focus:outline-none"
+            />
+          </div>
+
+          <div className="pt-4 border-t border-stone-200 flex justify-between items-center">
+            <button
+              type="button"
+              onClick={() => setStep(1)}
+              className="px-4 py-2.5 text-xs font-semibold text-stone-600 hover:text-stone-900 flex items-center gap-1"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> Back
+            </button>
+
+            <button
+              type="submit"
+              id="booking-step2-next-btn"
+              className="px-6 py-3 rounded-xl bg-[#dc3c1c] hover:bg-[#c23214] text-white text-xs font-bold shadow transition-all flex items-center gap-2 cursor-pointer"
+            >
+              <span>Choose Time & Complete Payment</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* STEP 3: Choose Date, Time Slot & Complete Payment */}
+      {step === 3 && (
+        <div className="bg-white rounded-3xl border border-[#e5dcce] p-6 sm:p-8 space-y-6 shadow-sm animate-fadeIn">
+          <div className="border-b border-stone-200 pb-4">
+            <h3 className="text-lg font-bold text-[#1c1a18]">Select Time Slot & Complete Payment</h3>
+            <p className="text-xs text-[#635a50]">
+              All times are shown in Indian Standard Time (IST). Upon completing payment, your Zoom meeting link is generated instantly.
+            </p>
+          </div>
+
+          {/* Date Selector */}
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold text-[#1c1a18]">Select Day:</label>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              {availableDates.map((d, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setSelectedDate(d.date)}
+                  className={`p-3 rounded-xl text-center border transition-all ${
+                    selectedDate === d.date
+                      ? 'border-[#dc3c1c] bg-[#fff6f4] ring-2 ring-[#dc3c1c]/20'
+                      : 'border-stone-200 bg-[#fcfaf7] hover:bg-stone-100'
+                  }`}
+                >
+                  <span className="block text-[11px] font-medium text-stone-500">{d.label}</span>
+                  <span className="block text-xs font-bold text-[#1c1a18] mt-0.5">{d.date.split(',')[1] || d.date}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Time Slots */}
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold text-[#1c1a18]">Available Slots (IST):</label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {availableSlots.map((slot, idx) => {
+                const isSelected = selectedTimeSlot === slot.time;
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setSelectedTimeSlot(slot.time)}
+                    className={`p-3.5 rounded-xl border text-left transition-all flex items-center justify-between ${
+                      isSelected
+                        ? 'border-[#dc3c1c] bg-[#fff5f2] ring-2 ring-[#dc3c1c]/20 font-bold'
+                        : 'border-stone-200 bg-white hover:border-stone-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Clock className={`w-4 h-4 ${isSelected ? 'text-[#dc3c1c]' : 'text-stone-400'}`} />
+                      <span className="text-xs text-[#1c1a18]">{slot.time}</span>
+                    </div>
+                    <span className="text-[10px] text-stone-400 uppercase">{slot.period}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Payment Method Selector */}
+          <div className="space-y-3 pt-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-[#1c1a18]">
+              Select Payment Method
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('upi')}
+                className={`p-3.5 rounded-xl border text-left flex items-center gap-3 transition-all ${
+                  paymentMethod === 'upi'
+                    ? 'border-[#dc3c1c] bg-[#fff5f2] ring-2 ring-[#dc3c1c]/20'
+                    : 'border-stone-200 bg-white hover:border-stone-300'
+                }`}
+              >
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs">
+                  UPI
+                </div>
+                <div>
+                  <span className="block text-xs font-bold text-[#1c1a18]">UPI / QR / Apps</span>
+                  <span className="block text-[10px] text-stone-500">GPay, PhonePe, Paytm</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('card')}
+                className={`p-3.5 rounded-xl border text-left flex items-center gap-3 transition-all ${
+                  paymentMethod === 'card'
+                    ? 'border-[#dc3c1c] bg-[#fff5f2] ring-2 ring-[#dc3c1c]/20'
+                    : 'border-stone-200 bg-white hover:border-stone-300'
+                }`}
+              >
+                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-800 flex items-center justify-center font-bold text-xs">
+                  <CreditCard className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="block text-xs font-bold text-[#1c1a18]">Credit / Debit Card</span>
+                  <span className="block text-[10px] text-stone-500">Visa, Mastercard, RuPay</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('netbanking')}
+                className={`p-3.5 rounded-xl border text-left flex items-center gap-3 transition-all ${
+                  paymentMethod === 'netbanking'
+                    ? 'border-[#dc3c1c] bg-[#fff5f2] ring-2 ring-[#dc3c1c]/20'
+                    : 'border-stone-200 bg-white hover:border-stone-300'
+                }`}
+              >
+                <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-800 flex items-center justify-center font-bold text-xs">
+                  🏦
+                </div>
+                <div>
+                  <span className="block text-xs font-bold text-[#1c1a18]">Net Banking</span>
+                  <span className="block text-[10px] text-stone-500">All Major Indian Banks</span>
+                </div>
+              </button>
+            </div>
+
+            {paymentMethod === 'upi' && (
+              <div className="p-4 rounded-xl bg-[#faf6ef] border border-[#e8dfd3] space-y-2 text-xs">
+                <label className="block font-semibold text-[#1c1a18]">Enter UPI ID / VPA (Optional):</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="yourname@okaxis / yourname@upi"
+                    value={upiId}
+                    onChange={(e) => setUpiId(e.target.value)}
+                    className="flex-1 px-3 py-2 text-xs rounded-lg border border-stone-300 bg-white focus:outline-none focus:border-[#dc3c1c]"
+                  />
+                </div>
+                <p className="text-[11px] text-stone-500">
+                  Instant QR code and payment intent will be processed automatically upon confirmation.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Summary Box */}
+          <div className="p-5 rounded-2xl bg-[#f8f4ec] border border-[#e8ded0] space-y-3 text-xs">
+            <div className="flex items-center justify-between font-bold text-[#1c1a18] border-b border-stone-200/80 pb-2">
+              <span className="text-sm">Session Summary & Total:</span>
+              <div className="text-right">
+                <span className="text-[#dc3c1c] font-black text-lg">₹{selectedPkg.price}</span>
+                <span className="block text-[10px] text-emerald-700 font-medium">All taxes & Zoom link included</span>
+              </div>
+            </div>
+            <div className="text-[#554d44] space-y-1.5">
+              <p>• <strong>Package:</strong> {selectedPkg.title} ({sessionMode === 'video' ? 'Zoom Video Call' : 'Zoom Audio Call'})</p>
+              <p>• <strong>Scheduled Time:</strong> {selectedDate} at {selectedTimeSlot} (IST)</p>
+              <p>• <strong>Delivery:</strong> Zoom meeting link will be dispatched immediately to <strong>{formData.email || 'your email'}</strong> & WhatsApp <strong>{formData.countryCode} {formData.phone || 'your phone'}</strong></p>
+              <p>• <strong>Mentor:</strong> Siddhi Patel (Hindi / Gujarati / English)</p>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-stone-200 flex justify-between items-center">
+            <button
+              type="button"
+              onClick={() => setStep(2)}
+              disabled={isProcessingPayment}
+              className="px-4 py-2.5 text-xs font-semibold text-stone-600 hover:text-stone-900 flex items-center gap-1"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> Back
+            </button>
+
+            <button
+              type="button"
+              id="confirm-booking-btn"
+              onClick={handleCompletePaymentAndBooking}
+              disabled={isProcessingPayment}
+              className="px-8 py-3.5 rounded-xl bg-[#dc3c1c] hover:bg-[#c23214] text-white text-xs font-bold shadow-md transition-all flex items-center gap-2 cursor-pointer disabled:opacity-75"
+            >
+              {isProcessingPayment ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Processing Payment & Generating Zoom Link...</span>
+                </>
+              ) : (
+                <>
+                  <Lock className="w-4 h-4" />
+                  <span>Pay ₹{selectedPkg.price} & Generate Zoom Link →</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 4: Confirmation & Auto-Generated Zoom Details */}
+      {step === 4 && confirmedBooking && (
+        <div className="bg-white rounded-3xl border border-[#e5dcce] p-6 sm:p-10 space-y-8 shadow-md animate-fadeIn">
+          {/* Header Badge */}
+          <div className="text-center space-y-3">
+            <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-700 mx-auto flex items-center justify-center shadow-inner">
+              <CheckCircle2 className="w-9 h-9" />
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+                Payment Successful • Booking Confirmed
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-bold text-[#1c1a18] pt-2">
+                Your Zoom Mentorship Session is Scheduled!
+              </h2>
+              <p className="text-xs sm:text-sm text-[#5c544b] max-w-lg mx-auto">
+                Your private Zoom meeting link has been automatically generated and sent to both your <strong>Email</strong> and <strong>WhatsApp</strong>.
+              </p>
+            </div>
+          </div>
+
+          {/* Zoom Meeting Card */}
+          <div className="p-6 rounded-2xl bg-gradient-to-br from-[#0b5cff]/5 via-[#faf6f0] to-[#fff5f2] border-2 border-[#0b5cff]/30 space-y-5 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-200 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-[#0b5cff] text-white flex items-center justify-center font-black shadow-sm">
+                  <Video className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-[#1c1a18]">
+                    Official Zoom 1-to-1 Meeting Details
+                  </h3>
+                  <p className="text-[11px] text-stone-500">Private encrypted video/audio room with Siddhi Patel</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold">
+                  Active Link
+                </span>
+                <span className="px-2.5 py-1 rounded-full bg-stone-100 text-stone-700 text-[11px] font-mono font-medium">
+                  {confirmedBooking.transactionId}
+                </span>
+              </div>
+            </div>
+
+            {/* Link Box */}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold text-stone-500 uppercase tracking-wider mb-1">
+                  Zoom Join URL:
+                </label>
+                <div className="p-3 bg-white rounded-xl border border-stone-300 flex items-center justify-between gap-3 shadow-inner">
+                  <span className="text-xs font-mono text-[#0b5cff] truncate select-all">
+                    {confirmedBooking.zoomJoinUrl}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(confirmedBooking.zoomJoinUrl, 'link')}
+                    className="px-3 py-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-semibold flex items-center gap-1.5 flex-shrink-0 transition-colors cursor-pointer"
+                  >
+                    {copiedLink ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <span className="text-emerald-700 font-bold">Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy Link</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* ID and Passcode Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-3 bg-white rounded-xl border border-stone-200 flex items-center justify-between">
+                  <span className="text-xs text-stone-500">Meeting ID:</span>
+                  <span className="text-xs font-mono font-bold text-stone-900 select-all">
+                    {confirmedBooking.zoomMeetingId}
+                  </span>
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-stone-200 flex items-center justify-between">
+                  <span className="text-xs text-stone-500">Passcode:</span>
+                  <span className="text-xs font-mono font-bold text-stone-900 select-all">
+                    {confirmedBooking.zoomPasscode}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Direct Action Buttons */}
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <a
+                href={confirmedBooking.zoomJoinUrl}
+                target="_blank"
+                rel="noreferrer"
+                id="join-zoom-btn"
+                className="flex-1 py-3 px-5 rounded-xl bg-[#0b5cff] hover:bg-[#004bd9] text-white text-xs font-bold shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer"
+              >
+                <Video className="w-4 h-4" />
+                <span>Join Zoom Meeting</span>
+                <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+              </a>
+
+              <a
+                href={getGoogleCalendarUrl()}
+                target="_blank"
+                rel="noreferrer"
+                id="add-to-gcal-btn"
+                className="py-3 px-4 rounded-xl bg-white border border-stone-300 hover:bg-stone-50 text-stone-800 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <CalendarPlus className="w-4 h-4 text-[#dc3c1c]" />
+                <span>Add to Google Calendar</span>
+              </a>
+
+              <button
+                type="button"
+                onClick={handleDownloadIcs}
+                id="download-ics-btn"
+                className="py-3 px-4 rounded-xl bg-white border border-stone-300 hover:bg-stone-50 text-stone-800 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                title="Download .ics calendar file"
+              >
+                <Download className="w-4 h-4 text-stone-600" />
+                <span>Download .ICS</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Multi-Channel Automated Dispatch Receipts */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Email Dispatch Card */}
+            <div className="p-4 rounded-2xl bg-[#fdfbf7] border border-[#ebdccb] space-y-3">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-lg bg-emerald-100 text-emerald-700">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-xs text-[#1c1a18]">Email Dispatched</h4>
+                    <p className="text-[11px] text-stone-500 truncate max-w-[180px]">{confirmedBooking.email}</p>
+                  </div>
+                </div>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold flex items-center gap-1">
+                  <Check className="w-3 h-3" /> Sent
+                </span>
+              </div>
+
+              <p className="text-xs text-[#584f45] leading-relaxed">
+                Full Zoom invitation, calendar event, and preparation instructions have been delivered to your inbox.
+              </p>
+
+              <div className="pt-1 flex items-center justify-between border-t border-stone-200/80 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setShowEmailPreview(true)}
+                  className="text-[#dc3c1c] font-semibold hover:underline cursor-pointer"
+                >
+                  Preview Email Copy
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResendEmail}
+                  className="text-stone-600 hover:text-stone-900 font-medium cursor-pointer"
+                >
+                  {emailResent ? 'Email Resent ✓' : 'Resend Email'}
+                </button>
+              </div>
+            </div>
+
+            {/* WhatsApp Dispatch Card */}
+            <div className="p-4 rounded-2xl bg-[#fdfbf7] border border-[#ebdccb] space-y-3">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-lg bg-emerald-100 text-emerald-700">
+                    <Smartphone className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-xs text-[#1c1a18]">WhatsApp Dispatched</h4>
+                    <p className="text-[11px] text-stone-500">{confirmedBooking.phone}</p>
+                  </div>
+                </div>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold flex items-center gap-1">
+                  <Check className="w-3 h-3" /> Sent
+                </span>
+              </div>
+
+              <p className="text-xs text-[#584f45] leading-relaxed">
+                Instant WhatsApp message with your Zoom link, time reminder, and mentor greeting has been sent.
+              </p>
+
+              <div className="pt-1 flex items-center justify-between border-t border-stone-200/80 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setShowWhatsAppPreview(true)}
+                  className="text-[#dc3c1c] font-semibold hover:underline cursor-pointer"
+                >
+                  View WhatsApp Message
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResendWhatsApp}
+                  className="text-stone-600 hover:text-stone-900 font-medium cursor-pointer"
+                >
+                  {whatsappResent ? 'WhatsApp Resent ✓' : 'Resend WhatsApp'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Session Overview Details */}
+          <div className="p-5 rounded-2xl bg-[#faf6f0] border border-[#e8dfd3] max-w-xl mx-auto text-left space-y-3 text-xs">
+            <div className="flex justify-between border-b border-stone-200 pb-2">
+              <span className="text-stone-500">Mentee:</span>
+              <span className="font-bold text-stone-900">{confirmedBooking.fullName} (Age: {confirmedBooking.age})</span>
+            </div>
+            <div className="flex justify-between border-b border-stone-200 pb-2">
+              <span className="text-stone-500">Scheduled Time:</span>
+              <span className="font-bold text-stone-900">{confirmedBooking.preferredDate} ({confirmedBooking.preferredTime} IST)</span>
+            </div>
+            <div className="flex justify-between border-b border-stone-200 pb-2">
+              <span className="text-stone-500">Session Mode & Duration:</span>
+              <span className="font-bold text-[#dc3c1c] capitalize">
+                {confirmedBooking.sessionMode} on Zoom ({confirmedBooking.packageType.duration})
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-stone-500">Mentor:</span>
+              <span className="font-bold text-stone-900">Siddhi Patel (Hindi / Gujarati / English)</span>
+            </div>
+          </div>
+
+          {/* Next Steps / Chat CTA */}
+          <div className="flex flex-col sm:flex-row gap-3 justify-center max-w-md mx-auto">
+            <button
+              id="start-chat-with-mentor-btn"
+              onClick={() => onNavigate('chat')}
+              className="px-6 py-3.5 rounded-xl bg-[#22201e] hover:bg-stone-800 text-white font-semibold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <MessageSquare className="w-4 h-4 text-[#ff785a]" />
+              <span>Leave a Pre-Session Message for Siddhi</span>
+            </button>
+
+            <button
+              id="back-home-btn"
+              onClick={() => onNavigate('home')}
+              className="px-5 py-3.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 font-semibold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Back to Home</span>
+            </button>
+          </div>
+
+          {/* Preparation tips */}
+          <div className="pt-6 border-t border-stone-200 max-w-md mx-auto text-left text-xs text-[#635a50] space-y-1.5">
+            <p className="font-bold text-[#1c1a18]">3 Simple tips for your Zoom session:</p>
+            <p>1. Ensure Zoom is installed or open it directly in your web browser 2 minutes before the time.</p>
+            <p>2. Find a quiet corner where you feel comfortable and completely safe to speak freely.</p>
+            <p>3. Remember: you don't need to prepare a polished speech. Just come as you are.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Email Preview Modal */}
+      {showEmailPreview && confirmedBooking && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-3xl border border-stone-200 max-w-lg w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-stone-200 pb-3">
+              <div className="flex items-center gap-2">
+                <Mail className="w-5 h-5 text-[#dc3c1c]" />
+                <h3 className="font-bold text-sm text-[#1c1a18]">Dispatched Email Preview</h3>
+              </div>
+              <button
+                onClick={() => setShowEmailPreview(false)}
+                className="text-stone-400 hover:text-stone-700 text-sm font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-4 rounded-xl bg-stone-50 border border-stone-200 text-xs text-stone-700 space-y-3 font-sans leading-relaxed">
+              <div className="border-b border-stone-200 pb-2 text-[11px] text-stone-500">
+                <p><strong>To:</strong> {confirmedBooking.email}</p>
+                <p><strong>From:</strong> supportsystem22@gmail.com (SupportSystem Official)</p>
+                <p><strong>Subject:</strong> Your 1-to-1 Mentorship Zoom Link with Siddhi Patel ({confirmedBooking.preferredDate})</p>
+              </div>
+
+              <p>Dear <strong>{confirmedBooking.fullName}</strong>,</p>
+              <p>
+                Your private 1-to-1 mentorship session with <strong>Siddhi Patel</strong> is officially scheduled and confirmed.
+              </p>
+
+              <div className="p-3 rounded-lg bg-white border border-[#0b5cff]/30 space-y-1">
+                <p className="font-bold text-[#0b5cff]">🎥 Zoom Meeting Details:</p>
+                <p><strong>Join Link:</strong> <span className="font-mono text-[11px]">{confirmedBooking.zoomJoinUrl}</span></p>
+                <p><strong>Meeting ID:</strong> {confirmedBooking.zoomMeetingId}</p>
+                <p><strong>Passcode:</strong> {confirmedBooking.zoomPasscode}</p>
+                <p><strong>Time:</strong> {confirmedBooking.preferredDate} at {confirmedBooking.preferredTime} (IST)</p>
+              </div>
+
+              <p>
+                Warm regards,<br />
+                <strong>SupportSystem Team & Siddhi Patel</strong>
+              </p>
+            </div>
+
+            <button
+              onClick={() => setShowEmailPreview(false)}
+              className="w-full py-2.5 rounded-xl bg-[#22201e] text-white text-xs font-bold hover:bg-stone-800 cursor-pointer"
+            >
+              Close Preview
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp Preview Modal */}
+      {showWhatsAppPreview && confirmedBooking && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-3xl border border-stone-200 max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-stone-200 pb-3">
+              <div className="flex items-center gap-2">
+                <Smartphone className="w-5 h-5 text-emerald-600" />
+                <h3 className="font-bold text-sm text-[#1c1a18]">Dispatched WhatsApp Preview</h3>
+              </div>
+              <button
+                onClick={() => setShowWhatsAppPreview(false)}
+                className="text-stone-400 hover:text-stone-700 text-sm font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-[#e5ddd5] text-xs text-stone-800 space-y-2">
+              <div className="p-3.5 rounded-xl bg-[#dcf8c6] shadow-sm space-y-2 leading-relaxed">
+                <p className="font-bold text-stone-900">
+                  SupportSystem • 1-to-1 Mentorship
+                </p>
+                <p>
+                  Namaste <strong>{confirmedBooking.fullName}</strong>! 🙏
+                </p>
+                <p>
+                  Your 1-to-1 session with <strong>Siddhi Patel</strong> is confirmed for <strong>{confirmedBooking.preferredDate}</strong> at <strong>{confirmedBooking.preferredTime} IST</strong>.
+                </p>
+                <p>
+                  🔗 <strong>Zoom Link:</strong> {confirmedBooking.zoomJoinUrl}<br />
+                  🔑 <strong>Meeting ID:</strong> {confirmedBooking.zoomMeetingId}<br />
+                  🔒 <strong>Passcode:</strong> {confirmedBooking.zoomPasscode}
+                </p>
+                <p className="text-[11px] text-stone-600">
+                  Feel free to message here if you need to adjust time or have questions before our session. See you soon!
+                </p>
+                <span className="block text-[10px] text-right text-stone-500">Just now • Delivered ✓✓</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowWhatsAppPreview(false)}
+              className="w-full py-2.5 rounded-xl bg-[#22201e] text-white text-xs font-bold hover:bg-stone-800 cursor-pointer"
+            >
+              Close Preview
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

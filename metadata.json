@@ -1,0 +1,7 @@
+{
+  "name": "SupportSystem",
+  "description": "SupportSystem • Find your way back to yourself. 1-to-1 Life Mentorship & Emotional Support platform featuring private video/audio sessions, real-time messaging, and an anonymous community forum.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

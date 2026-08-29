@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-serif: 'Instrument Serif', 'Playfair Display', Georgia, serif;
+    --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    --font-hindi: 'Noto Sans Devanagari', 'Plus Jakarta Sans', sans-serif;
+    --color-terracotta: #dc4424;
+    --color-terracotta-dark: #b83316;
+    --color-terracotta-light: #fff2ef;
+    --color-paper: #faf8f5;
+    --color-sand: #f2ede4;
+    --color-charcoal: #1e1d1b;
+    --color-sage: #537463;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--color-paper);
+    color: var(--color-charcoal);
+  }
+}
+
+.font-serif-display {
+  font-family: var(--font-serif);
+}
+
+.font-hindi-quote {
+  font-family: var(--font-hindi);
+}
+
+/* Custom subtle scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f5f1ea;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d8d0c2;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #b5ac9d;
+}
+
+/* Gentle radial glow utilities */
+.radial-halo {
+  background: radial-gradient(circle, rgba(220, 68, 36, 0.12) 0%, rgba(220, 68, 36, 0) 70%);
+}
+
+.radial-dots-bg {
+  background-image: radial-gradient(#d6cec0 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
