@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { PageView, LanguageMode } from '../types';
 import { pricingPackages, faqs } from '../data/mentorData';
 import {
@@ -10,10 +10,13 @@ import {
   ArrowRight,
   Lock,
   Mail,
+  X,
 } from 'lucide-react';
+import { RazorpayCheckoutButton } from '../components/RazorpayCheckoutButton';
+import { savePrePaidInfo } from '../utils/paymentStorage';
 
 interface PricingPageProps {
-  onNavigate: (page: PageView) => void;
+  onNavigate: (page: PageView, options?: any) => void;
   lang: LanguageMode;
   onOpenPolicy: (tab: 'disclaimer' | 'teen-safety' | 'rescheduling' | 'privacy') => void;
 }
@@ -23,6 +26,13 @@ export const PricingPage: React.FC<PricingPageProps> = ({
   lang,
   onOpenPolicy,
 }) => {
+  const [quickPaymentSuccess, setQuickPaymentSuccess] = useState<{
+    packageId: string;
+    packageTitle: string;
+    price: number;
+    paymentId: string;
+    orderId: string;
+  } | null>(null);
   return (
     <div id="pricing-page-container" className="max-w-6xl mx-auto px-4 sm:px-6 py-12 space-y-16">
       {/* Header */}
@@ -80,18 +90,39 @@ export const PricingPage: React.FC<PricingPageProps> = ({
                 </ul>
               </div>
 
-              <div className="pt-6 mt-4 border-t border-stone-100 space-y-3">
+              <div className="pt-6 mt-4 border-t border-stone-100 space-y-2">
                 <button
-                  onClick={() => onNavigate('book')}
-                  className={`w-full py-3 rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer ${
+                  onClick={() => onNavigate('book', { packageId: pkg.id })}
+                  className={`w-full py-2.5 rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer ${
                     pkg.popular
                       ? 'bg-[#dc3c1c] hover:bg-[#c23214] text-white shadow-md'
                       : 'bg-[#22201e] hover:bg-stone-800 text-white'
                   }`}
                 >
-                  Book This Session
+                  Book & Schedule Session
                 </button>
-                <p className="text-[10px] text-stone-400 text-center">Video or Audio Call</p>
+
+                <RazorpayCheckoutButton
+                  amountInPaise={pkg.price * 100}
+                  currency="INR"
+                  name="SupportSystem Mentorship"
+                  description={`${pkg.title} - 1-to-1 Mentorship`}
+                  buttonText={`Quick Pay ₹${pkg.price}`}
+                  className="w-full py-2 rounded-xl bg-[#fff5f2] border border-[#dc3c1c]/40 hover:bg-[#ffece6] text-[#dc3c1c] text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-none"
+                  onSuccess={(response) => {
+                    const info = {
+                      packageId: pkg.id,
+                      packageTitle: pkg.title,
+                      price: pkg.price,
+                      paymentId: response.razorpay_payment_id,
+                      orderId: response.razorpay_order_id,
+                    };
+                    savePrePaidInfo(info);
+                    setQuickPaymentSuccess(info);
+                  }}
+                />
+
+                <p className="text-[10px] text-stone-400 text-center">Instant Razorpay UPI, Cards & NetBanking</p>
               </div>
             </div>
           );
@@ -166,6 +197,78 @@ export const PricingPage: React.FC<PricingPageProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Quick Payment Verification Success Modal */}
+      {quickPaymentSuccess && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 space-y-6 shadow-2xl border border-stone-200 relative">
+            <button
+              onClick={() => setQuickPaymentSuccess(null)}
+              className="absolute top-4 right-4 text-stone-400 hover:text-stone-700 p-1.5 rounded-full hover:bg-stone-100 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="text-center space-y-3">
+              <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
+                <CheckCircle2 className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-bold text-[#1c1a18]">Payment Verified Successfully!</h3>
+              <p className="text-xs text-[#5c544c]">
+                Your Razorpay payment for <strong>{quickPaymentSuccess.packageTitle}</strong> has been confirmed.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-[#faf6ef] border border-[#ebdccb] space-y-2 text-xs">
+              <div className="flex justify-between py-1 border-b border-stone-200/60">
+                <span className="text-stone-500">Amount Paid:</span>
+                <span className="font-bold text-[#dc3c1c]">₹{quickPaymentSuccess.price}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-stone-200/60">
+                <span className="text-stone-500">Payment ID:</span>
+                <span className="font-mono font-medium text-[#1c1a18]">{quickPaymentSuccess.paymentId}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-stone-200/60">
+                <span className="text-stone-500">Order ID:</span>
+                <span className="font-mono text-stone-600">{quickPaymentSuccess.orderId}</span>
+              </div>
+              <div className="flex justify-between py-1">
+                <span className="text-stone-500">Security Signature:</span>
+                <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5" /> HMAC-SHA256 Validated
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-2">
+              <button
+                onClick={() => {
+                  const info = {
+                    packageId: quickPaymentSuccess.packageId,
+                    packageTitle: quickPaymentSuccess.packageTitle,
+                    price: quickPaymentSuccess.price,
+                    paymentId: quickPaymentSuccess.paymentId,
+                    orderId: quickPaymentSuccess.orderId,
+                  };
+                  setQuickPaymentSuccess(null);
+                  onNavigate('book', { prePaidInfo: info, packageId: quickPaymentSuccess.packageId });
+                }}
+                className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <span>Proceed to Schedule Session (Pre-Paid)</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+
+              <button
+                onClick={() => setQuickPaymentSuccess(null)}
+                className="w-full py-2.5 rounded-xl text-xs font-semibold text-stone-600 hover:text-stone-900 cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

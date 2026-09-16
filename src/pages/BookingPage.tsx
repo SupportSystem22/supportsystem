@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { PageView, LanguageMode, SessionMode, BookingDetails } from '../types';
+import React, { useState, useEffect } from 'react';
+import { PageView, LanguageMode, SessionMode, BookingDetails, PrePaidBookingInfo } from '../types';
 import { pricingPackages, mentorData } from '../data/mentorData';
 import {
   Calendar as CalendarIcon,
@@ -26,24 +26,70 @@ import {
   Check,
   Send,
   Info,
+  AlertCircle,
+  KeyRound,
+  RefreshCcw,
 } from 'lucide-react';
+import { initiateRazorpayCheckout } from '../utils/razorpay';
+import { RazorpayPaymentSuccessResponse } from '../vite-env';
+import { recoverPaymentFromBackend } from '../utils/paymentStorage';
 
 interface BookingPageProps {
-  onNavigate: (page: PageView) => void;
+  onNavigate: (page: PageView, options?: any) => void;
   lang: LanguageMode;
   onBookingConfirmed: (booking: BookingDetails) => void;
+  initialPackageId?: string;
+  prePaidInfo?: PrePaidBookingInfo | null;
+  onClearPrePaidInfo?: () => void;
+  activeBooking?: BookingDetails | null;
+  onStartNewBooking?: () => void;
 }
 
 export const BookingPage: React.FC<BookingPageProps> = ({
   onNavigate,
   lang,
   onBookingConfirmed,
+  initialPackageId,
+  prePaidInfo,
+  onClearPrePaidInfo,
+  activeBooking,
+  onStartNewBooking,
 }) => {
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  // If user has an active confirmed booking, stay on Step 4 (Zoom details) across page reloads!
+  // If user came from pre-payment, start directly at Step 2 (Intake Form)
+  // Otherwise start at Step 1
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(() => {
+    if (activeBooking) return 4;
+    if (prePaidInfo) return 2;
+    return 1;
+  });
+
+  const [confirmedBooking, setConfirmedBooking] = useState<BookingDetails | null>(() => activeBooking || null);
 
   // Form states
   const [sessionMode, setSessionMode] = useState<SessionMode>('video');
-  const [selectedPackageId, setSelectedPackageId] = useState<string>('session-45');
+  const [selectedPackageId, setSelectedPackageId] = useState<string>(() => {
+    return prePaidInfo?.packageId || initialPackageId || 'session-45';
+  });
+
+  // Recovery modal state
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [recoveryPaymentId, setRecoveryPaymentId] = useState('');
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  const [recoverySuccess, setRecoverySuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeBooking) {
+      setConfirmedBooking(activeBooking);
+      setStep(4);
+    } else if (prePaidInfo?.packageId) {
+      setSelectedPackageId(prePaidInfo.packageId);
+      setStep(2);
+    } else if (initialPackageId) {
+      setSelectedPackageId(initialPackageId);
+    }
+  }, [activeBooking, prePaidInfo, initialPackageId]);
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -62,7 +108,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<'upi' | 'card' | 'netbanking'>('upi');
   const [upiId, setUpiId] = useState<string>('');
   const [isProcessingPayment, setIsProcessingPayment] = useState<boolean>(false);
-  const [confirmedBooking, setConfirmedBooking] = useState<BookingDetails | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [paymentNotice, setPaymentNotice] = useState<string | null>(null);
 
   // UI helpers for confirmation
   const [copiedLink, setCopiedLink] = useState(false);
@@ -127,48 +174,134 @@ export const BookingPage: React.FC<BookingPageProps> = ({
     };
   };
 
-  const handleCompletePaymentAndBooking = () => {
+  const handleCompletePaymentAndBooking = async () => {
+    setPaymentError(null);
+    setPaymentNotice(null);
     setIsProcessingPayment(true);
 
-    setTimeout(() => {
-      const zoom = generateZoomDetails();
-      const fullPhone = `${formData.countryCode} ${formData.phone.replace(/^[+]?\d{1,3}\s?/, '')}`;
-      const newBooking: BookingDetails = {
-        id: `booking-${Date.now()}`,
-        fullName: formData.fullName || 'Mentee Friend',
-        age: formData.age || '23',
-        gender: formData.gender,
-        email: formData.email || 'user@example.com',
-        phone: fullPhone || '+91 9876543210',
-        preferredLanguage: formData.preferredLanguage,
-        sessionMode,
-        packageType: {
-          title: selectedPkg.title,
-          duration: typeof selectedPkg.durationMinutes === 'number' ? `${selectedPkg.durationMinutes} mins` : selectedPkg.durationMinutes,
-          price: selectedPkg.price,
-          description: selectedPkg.subtitle,
-        },
-        preferredDate: selectedDate,
-        preferredTime: selectedTimeSlot,
-        reasons: formData.reasons.length > 0 ? formData.reasons : ['General Clarity & Emotional Support'],
-        notes: formData.notes,
-        status: 'confirmed',
-        createdAt: new Date().toISOString(),
-        meetingLink: zoom.joinUrl,
-        zoomMeetingId: zoom.meetingId,
-        zoomPasscode: zoom.passcode,
-        zoomJoinUrl: zoom.joinUrl,
-        emailSent: true,
-        whatsappSent: true,
-        paymentMethod: paymentMethod.toUpperCase(),
-        transactionId: `TXN-${Math.floor(100000000 + Math.random() * 900000000)}`,
-      };
+    const fullPhone = `${formData.countryCode} ${formData.phone.replace(/^[+]?\d{1,3}\s?/, '')}`;
 
+    // CASE 1: Pre-Paid from Quick Pay or Prior Checkout - DO NOT charge again!
+    if (prePaidInfo) {
+      setTimeout(() => {
+        const zoom = generateZoomDetails();
+        const newBooking: BookingDetails = {
+          id: `booking-${Date.now()}`,
+          fullName: formData.fullName || 'Mentee Friend',
+          age: formData.age || '23',
+          gender: formData.gender,
+          email: formData.email || 'user@example.com',
+          phone: fullPhone || '+91 9876543210',
+          preferredLanguage: formData.preferredLanguage,
+          sessionMode,
+          packageType: {
+            title: selectedPkg.title,
+            duration: typeof selectedPkg.durationMinutes === 'number' ? `${selectedPkg.durationMinutes} mins` : selectedPkg.durationMinutes,
+            price: selectedPkg.price,
+            description: selectedPkg.subtitle,
+          },
+          preferredDate: selectedDate,
+          preferredTime: selectedTimeSlot,
+          reasons: formData.reasons.length > 0 ? formData.reasons : ['General Clarity & Emotional Support'],
+          notes: formData.notes,
+          status: 'confirmed',
+          createdAt: new Date().toISOString(),
+          meetingLink: zoom.joinUrl,
+          zoomMeetingId: zoom.meetingId,
+          zoomPasscode: zoom.passcode,
+          zoomJoinUrl: zoom.joinUrl,
+          emailSent: true,
+          whatsappSent: true,
+          paymentMethod: 'RAZORPAY (PRE-PAID)',
+          transactionId: prePaidInfo.paymentId,
+        };
+
+        setIsProcessingPayment(false);
+        setConfirmedBooking(newBooking);
+        onBookingConfirmed(newBooking);
+        if (onClearPrePaidInfo) {
+          onClearPrePaidInfo();
+        }
+        setStep(4);
+      }, 700);
+      return;
+    }
+
+    // CASE 2: Direct Session Booking - Proceed with Razorpay Checkout Modal
+    const amountInPaise = Math.round(selectedPkg.price * 100);
+
+    try {
+      await initiateRazorpayCheckout({
+        amountInPaise,
+        currency: 'INR',
+        name: 'SupportSystem Mentorship',
+        description: `${selectedPkg.title} (${sessionMode === 'video' ? 'Zoom Video' : 'Zoom Audio'})`,
+        receipt: `rcpt_${Date.now()}`,
+        prefill: {
+          name: formData.fullName || 'Mentee',
+          email: formData.email || '',
+          contact: formData.phone ? fullPhone.replace(/\s+/g, '') : '',
+          method: paymentMethod,
+        },
+        notes: {
+          sessionMode,
+          packageTitle: selectedPkg.title,
+          scheduledDate: selectedDate,
+          scheduledTime: selectedTimeSlot,
+          menteeName: formData.fullName || 'Mentee',
+        },
+        themeColor: '#dc3c1c',
+        onSuccess: (response: RazorpayPaymentSuccessResponse) => {
+          const zoom = generateZoomDetails();
+          const newBooking: BookingDetails = {
+            id: `booking-${Date.now()}`,
+            fullName: formData.fullName || 'Mentee Friend',
+            age: formData.age || '23',
+            gender: formData.gender,
+            email: formData.email || 'user@example.com',
+            phone: fullPhone || '+91 9876543210',
+            preferredLanguage: formData.preferredLanguage,
+            sessionMode,
+            packageType: {
+              title: selectedPkg.title,
+              duration: typeof selectedPkg.durationMinutes === 'number' ? `${selectedPkg.durationMinutes} mins` : selectedPkg.durationMinutes,
+              price: selectedPkg.price,
+              description: selectedPkg.subtitle,
+            },
+            preferredDate: selectedDate,
+            preferredTime: selectedTimeSlot,
+            reasons: formData.reasons.length > 0 ? formData.reasons : ['General Clarity & Emotional Support'],
+            notes: formData.notes,
+            status: 'confirmed',
+            createdAt: new Date().toISOString(),
+            meetingLink: zoom.joinUrl,
+            zoomMeetingId: zoom.meetingId,
+            zoomPasscode: zoom.passcode,
+            zoomJoinUrl: zoom.joinUrl,
+            emailSent: true,
+            whatsappSent: true,
+            paymentMethod: `RAZORPAY (${paymentMethod.toUpperCase()})`,
+            transactionId: response.razorpay_payment_id,
+          };
+
+          setIsProcessingPayment(false);
+          setConfirmedBooking(newBooking);
+          onBookingConfirmed(newBooking);
+          setStep(4);
+        },
+        onError: (err) => {
+          setIsProcessingPayment(false);
+          setPaymentError(err.message || 'Payment processing failed. Please try again.');
+        },
+        onDismiss: () => {
+          setIsProcessingPayment(false);
+          setPaymentNotice('Payment was cancelled or closed. You can retry anytime.');
+        },
+      });
+    } catch (err: any) {
       setIsProcessingPayment(false);
-      setConfirmedBooking(newBooking);
-      onBookingConfirmed(newBooking);
-      setStep(4);
-    }, 1200);
+      setPaymentError(err.message || 'An unexpected error occurred while launching Razorpay Checkout.');
+    }
   };
 
   const copyToClipboard = (text: string, type: 'link' | 'invite') => {
@@ -179,6 +312,31 @@ export const BookingPage: React.FC<BookingPageProps> = ({
     } else {
       setCopiedInvite(true);
       setTimeout(() => setCopiedInvite(false), 2500);
+    }
+  };
+
+  const handleRecoverPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanId = recoveryPaymentId.trim();
+    if (!cleanId) return;
+
+    setRecoveryLoading(true);
+    setRecoveryError(null);
+    setRecoverySuccess(null);
+
+    try {
+      const info = await recoverPaymentFromBackend(cleanId);
+      setRecoverySuccess(`Payment found & verified: ₹${info.price} for ${info.packageTitle}!`);
+      setTimeout(() => {
+        setShowRecoveryModal(false);
+        setRecoverySuccess(null);
+        setRecoveryPaymentId('');
+        onNavigate('book', { prePaidInfo: info, packageId: info.packageId });
+      }, 900);
+    } catch (err: any) {
+      setRecoveryError(err.message || 'Payment not found in Razorpay records. Please verify your Payment ID.');
+    } finally {
+      setRecoveryLoading(false);
     }
   };
 
@@ -242,13 +400,42 @@ END:VCALENDAR`;
         </p>
       </div>
 
+      {/* Pre-Paid Razorpay Notice Banner */}
+      {prePaidInfo && (
+        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fadeIn shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="font-bold text-xs sm:text-sm text-emerald-950 flex items-center gap-2">
+                <span>Pre-Payment Verified: {prePaidInfo.packageTitle} (₹{prePaidInfo.price})</span>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-800 text-[10px] font-mono font-bold">PAID</span>
+              </div>
+              <div className="text-[11px] text-emerald-700 mt-0.5">
+                Razorpay Transaction ID: <span className="font-mono font-semibold">{prePaidInfo.paymentId}</span> • No further payment required.
+              </div>
+            </div>
+          </div>
+          {onClearPrePaidInfo && (
+            <button
+              type="button"
+              onClick={onClearPrePaidInfo}
+              className="text-[11px] text-emerald-700 hover:text-emerald-900 underline font-medium cursor-pointer shrink-0"
+            >
+              Clear pre-paid status
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Progress Steps Header */}
       {step < 4 && (
         <div className="flex items-center justify-between max-w-xl mx-auto px-4">
           {[
             { num: 1, label: 'Session & Mode' },
             { num: 2, label: 'About You' },
-            { num: 3, label: 'Time & Payment' },
+            { num: 3, label: prePaidInfo ? 'Time & Confirmation' : 'Time & Payment' },
           ].map((s) => (
             <div key={s.num} className="flex items-center gap-2">
               <div
@@ -354,6 +541,12 @@ END:VCALENDAR`;
                       </span>
                     )}
 
+                    {prePaidInfo && prePaidInfo.packageId === pkg.id && (
+                      <span className="absolute -top-2.5 left-4 bg-emerald-600 text-white text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full shadow flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Pre-Paid (₹{prePaidInfo.price})
+                      </span>
+                    )}
+
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <h4 className="font-bold text-sm text-[#1c1a18]">{pkg.title}</h4>
@@ -388,12 +581,21 @@ END:VCALENDAR`;
             </div>
           </div>
 
-          <div className="pt-4 border-t border-stone-200 flex justify-end">
+          <div className="pt-4 border-t border-stone-200 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setShowRecoveryModal(true)}
+              className="text-stone-500 hover:text-[#dc3c1c] text-xs font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <KeyRound className="w-3.5 h-3.5 text-stone-400" />
+              <span>Already paid via Razorpay? Restore your session</span>
+            </button>
+
             <button
               type="button"
               id="booking-step1-next-btn"
               onClick={() => setStep(2)}
-              className="px-6 py-3 rounded-xl bg-[#dc3c1c] hover:bg-[#c23214] text-white text-xs font-bold shadow transition-all flex items-center gap-2 cursor-pointer"
+              className="w-full sm:w-auto px-6 py-3 rounded-xl bg-[#dc3c1c] hover:bg-[#c23214] text-white text-xs font-bold shadow transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <span>Continue: Your Contact Details</span>
               <ArrowRight className="w-4 h-4" />
@@ -583,20 +785,24 @@ END:VCALENDAR`;
               id="booking-step2-next-btn"
               className="px-6 py-3 rounded-xl bg-[#dc3c1c] hover:bg-[#c23214] text-white text-xs font-bold shadow transition-all flex items-center gap-2 cursor-pointer"
             >
-              <span>Choose Time & Complete Payment</span>
+              <span>{prePaidInfo ? 'Choose Time & Confirm Booking (Pre-Paid)' : 'Choose Time & Complete Payment'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
         </form>
       )}
 
-      {/* STEP 3: Choose Date, Time Slot & Complete Payment */}
+      {/* STEP 3: Choose Date, Time Slot & Complete Booking */}
       {step === 3 && (
         <div className="bg-white rounded-3xl border border-[#e5dcce] p-6 sm:p-8 space-y-6 shadow-sm animate-fadeIn">
           <div className="border-b border-stone-200 pb-4">
-            <h3 className="text-lg font-bold text-[#1c1a18]">Select Time Slot & Complete Payment</h3>
+            <h3 className="text-lg font-bold text-[#1c1a18]">
+              {prePaidInfo ? 'Select Time Slot & Confirm Booking' : 'Select Time Slot & Complete Payment'}
+            </h3>
             <p className="text-xs text-[#635a50]">
-              All times are shown in Indian Standard Time (IST). Upon completing payment, your Zoom meeting link is generated instantly.
+              {prePaidInfo
+                ? 'Your payment is already verified. Choose your preferred time slot to immediately generate your Zoom invitation.'
+                : 'All times are shown in Indian Standard Time (IST). Upon completing payment, your Zoom meeting link is generated instantly.'}
             </p>
           </div>
 
@@ -650,85 +856,109 @@ END:VCALENDAR`;
             </div>
           </div>
 
-          {/* Payment Method Selector */}
-          <div className="space-y-3 pt-2">
-            <label className="block text-xs font-bold uppercase tracking-wider text-[#1c1a18]">
-              Select Payment Method
-            </label>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <button
-                type="button"
-                onClick={() => setPaymentMethod('upi')}
-                className={`p-3.5 rounded-xl border text-left flex items-center gap-3 transition-all ${
-                  paymentMethod === 'upi'
-                    ? 'border-[#dc3c1c] bg-[#fff5f2] ring-2 ring-[#dc3c1c]/20'
-                    : 'border-stone-200 bg-white hover:border-stone-300'
-                }`}
-              >
-                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs">
-                  UPI
+          {/* Payment Section: Pre-Paid Card or Razorpay Selector */}
+          {prePaidInfo ? (
+            <div className="p-4 rounded-2xl bg-emerald-50/90 border border-emerald-200/80 space-y-3 animate-fadeIn">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-emerald-800 font-bold text-xs uppercase tracking-wide">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <span>Payment Pre-Verified with Razorpay</span>
                 </div>
-                <div>
-                  <span className="block text-xs font-bold text-[#1c1a18]">UPI / QR / Apps</span>
-                  <span className="block text-[10px] text-stone-500">GPay, PhonePe, Paytm</span>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setPaymentMethod('card')}
-                className={`p-3.5 rounded-xl border text-left flex items-center gap-3 transition-all ${
-                  paymentMethod === 'card'
-                    ? 'border-[#dc3c1c] bg-[#fff5f2] ring-2 ring-[#dc3c1c]/20'
-                    : 'border-stone-200 bg-white hover:border-stone-300'
-                }`}
-              >
-                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-800 flex items-center justify-center font-bold text-xs">
-                  <CreditCard className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="block text-xs font-bold text-[#1c1a18]">Credit / Debit Card</span>
-                  <span className="block text-[10px] text-stone-500">Visa, Mastercard, RuPay</span>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setPaymentMethod('netbanking')}
-                className={`p-3.5 rounded-xl border text-left flex items-center gap-3 transition-all ${
-                  paymentMethod === 'netbanking'
-                    ? 'border-[#dc3c1c] bg-[#fff5f2] ring-2 ring-[#dc3c1c]/20'
-                    : 'border-stone-200 bg-white hover:border-stone-300'
-                }`}
-              >
-                <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-800 flex items-center justify-center font-bold text-xs">
-                  🏦
-                </div>
-                <div>
-                  <span className="block text-xs font-bold text-[#1c1a18]">Net Banking</span>
-                  <span className="block text-[10px] text-stone-500">All Major Indian Banks</span>
-                </div>
-              </button>
-            </div>
-
-            {paymentMethod === 'upi' && (
-              <div className="p-4 rounded-xl bg-[#faf6ef] border border-[#e8dfd3] space-y-2 text-xs">
-                <label className="block font-semibold text-[#1c1a18]">Enter UPI ID / VPA (Optional):</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="yourname@okaxis / yourname@upi"
-                    value={upiId}
-                    onChange={(e) => setUpiId(e.target.value)}
-                    className="flex-1 px-3 py-2 text-xs rounded-lg border border-stone-300 bg-white focus:outline-none focus:border-[#dc3c1c]"
-                  />
-                </div>
-                <p className="text-[11px] text-stone-500">
-                  Instant QR code and payment intent will be processed automatically upon confirmation.
-                </p>
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-200 text-emerald-900 text-[10px] font-bold">
+                  NO PAYMENT REQUIRED
+                </span>
               </div>
-            )}
-          </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-stone-700 bg-white/80 p-3.5 rounded-xl border border-emerald-100">
+                <div><span className="text-stone-500">Package:</span> <span className="font-bold text-[#1c1a18]">{prePaidInfo.packageTitle}</span></div>
+                <div><span className="text-stone-500">Amount Paid:</span> <span className="font-bold text-emerald-700">₹{prePaidInfo.price} (PAID)</span></div>
+                <div><span className="text-stone-500">Razorpay Payment ID:</span> <span className="font-mono text-[11px] font-semibold text-stone-800">{prePaidInfo.paymentId}</span></div>
+                <div><span className="text-stone-500">Security Signature:</span> <span className="text-emerald-700 font-medium">HMAC-SHA256 Validated ✓</span></div>
+              </div>
+              <p className="text-[11px] text-emerald-800">
+                ✨ Your payment is already confirmed. Simply click the button below to reserve your slot and generate your meeting details!
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3 pt-2">
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#1c1a18]">
+                Select Payment Method
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('upi')}
+                  className={`p-3.5 rounded-xl border text-left flex items-center gap-3 transition-all ${
+                    paymentMethod === 'upi'
+                      ? 'border-[#dc3c1c] bg-[#fff5f2] ring-2 ring-[#dc3c1c]/20'
+                      : 'border-stone-200 bg-white hover:border-stone-300'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs">
+                    UPI
+                  </div>
+                  <div>
+                    <span className="block text-xs font-bold text-[#1c1a18]">UPI / QR / Apps</span>
+                    <span className="block text-[10px] text-stone-500">GPay, PhonePe, Paytm</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('card')}
+                  className={`p-3.5 rounded-xl border text-left flex items-center gap-3 transition-all ${
+                    paymentMethod === 'card'
+                      ? 'border-[#dc3c1c] bg-[#fff5f2] ring-2 ring-[#dc3c1c]/20'
+                      : 'border-stone-200 bg-white hover:border-stone-300'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-800 flex items-center justify-center font-bold text-xs">
+                    <CreditCard className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="block text-xs font-bold text-[#1c1a18]">Credit / Debit Card</span>
+                    <span className="block text-[10px] text-stone-500">Visa, Mastercard, RuPay</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('netbanking')}
+                  className={`p-3.5 rounded-xl border text-left flex items-center gap-3 transition-all ${
+                    paymentMethod === 'netbanking'
+                      ? 'border-[#dc3c1c] bg-[#fff5f2] ring-2 ring-[#dc3c1c]/20'
+                      : 'border-stone-200 bg-white hover:border-stone-300'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-800 flex items-center justify-center font-bold text-xs">
+                    🏦
+                  </div>
+                  <div>
+                    <span className="block text-xs font-bold text-[#1c1a18]">Net Banking</span>
+                    <span className="block text-[10px] text-stone-500">All Major Indian Banks</span>
+                  </div>
+                </button>
+              </div>
+
+              {paymentMethod === 'upi' && (
+                <div className="p-4 rounded-xl bg-[#faf6ef] border border-[#e8dfd3] space-y-2 text-xs">
+                  <label className="block font-semibold text-[#1c1a18]">Enter UPI ID / VPA (Optional):</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="yourname@okaxis / yourname@upi"
+                      value={upiId}
+                      onChange={(e) => setUpiId(e.target.value)}
+                      className="flex-1 px-3 py-2 text-xs rounded-lg border border-stone-300 bg-white focus:outline-none focus:border-[#dc3c1c]"
+                    />
+                  </div>
+                  <p className="text-[11px] text-stone-500">
+                    Instant QR code and payment intent will be processed automatically upon confirmation.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Summary Box */}
           <div className="p-5 rounded-2xl bg-[#f8f4ec] border border-[#e8ded0] space-y-3 text-xs">
@@ -736,7 +966,11 @@ END:VCALENDAR`;
               <span className="text-sm">Session Summary & Total:</span>
               <div className="text-right">
                 <span className="text-[#dc3c1c] font-black text-lg">₹{selectedPkg.price}</span>
-                <span className="block text-[10px] text-emerald-700 font-medium">All taxes & Zoom link included</span>
+                {prePaidInfo ? (
+                  <span className="block text-[10px] text-emerald-700 font-bold">✓ Pre-Paid via Razorpay</span>
+                ) : (
+                  <span className="block text-[10px] text-emerald-700 font-medium">All taxes & Zoom link included</span>
+                )}
               </div>
             </div>
             <div className="text-[#554d44] space-y-1.5">
@@ -747,12 +981,46 @@ END:VCALENDAR`;
             </div>
           </div>
 
-          <div className="pt-4 border-t border-stone-200 flex justify-between items-center">
+          {/* Payment Errors or Notices */}
+          {paymentError && (
+            <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 flex items-start gap-2.5 text-xs animate-fadeIn">
+              <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <span className="font-semibold">Payment Alert: </span>
+                <span>{paymentError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPaymentError(null)}
+                className="text-red-500 hover:text-red-700 font-bold ml-1 text-sm leading-none cursor-pointer"
+              >
+                ×
+              </button>
+            </div>
+          )}
+
+          {paymentNotice && (
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 flex items-start gap-2.5 text-xs animate-fadeIn">
+              <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <span>{paymentNotice}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPaymentNotice(null)}
+                className="text-amber-600 hover:text-amber-800 font-bold ml-1 text-sm leading-none cursor-pointer"
+              >
+                ×
+              </button>
+            </div>
+          )}
+
+          <div className="pt-4 border-t border-stone-200 flex flex-col sm:flex-row justify-between items-center gap-4">
             <button
               type="button"
               onClick={() => setStep(2)}
               disabled={isProcessingPayment}
-              className="px-4 py-2.5 text-xs font-semibold text-stone-600 hover:text-stone-900 flex items-center gap-1"
+              className="px-4 py-2.5 text-xs font-semibold text-stone-600 hover:text-stone-900 flex items-center gap-1 order-2 sm:order-1 cursor-pointer"
             >
               <ArrowLeft className="w-3.5 h-3.5" /> Back
             </button>
@@ -762,20 +1030,38 @@ END:VCALENDAR`;
               id="confirm-booking-btn"
               onClick={handleCompletePaymentAndBooking}
               disabled={isProcessingPayment}
-              className="px-8 py-3.5 rounded-xl bg-[#dc3c1c] hover:bg-[#c23214] text-white text-xs font-bold shadow-md transition-all flex items-center gap-2 cursor-pointer disabled:opacity-75"
+              className={`w-full sm:w-auto px-8 py-3.5 rounded-xl text-white text-xs font-bold shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-75 order-1 sm:order-2 ${
+                prePaidInfo
+                  ? 'bg-emerald-600 hover:bg-emerald-700'
+                  : 'bg-[#dc3c1c] hover:bg-[#c23214]'
+              }`}
             >
               {isProcessingPayment ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Processing Payment & Generating Zoom Link...</span>
+                  <span>{prePaidInfo ? 'Confirming Slot & Generating Zoom Link...' : 'Connecting to Razorpay Gateway...'}</span>
+                </>
+              ) : prePaidInfo ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Confirm Booking & Generate Zoom Link (Pre-Paid) →</span>
                 </>
               ) : (
                 <>
                   <Lock className="w-4 h-4" />
-                  <span>Pay ₹{selectedPkg.price} & Generate Zoom Link →</span>
+                  <span>Pay ₹{selectedPkg.price} via Razorpay →</span>
                 </>
               )}
             </button>
+          </div>
+
+          <div className="flex items-center justify-center gap-1.5 text-[11px] text-stone-400">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>
+              {prePaidInfo
+                ? 'Payment already verified & authorized via Razorpay Standard 256-bit SSL Checkout'
+                : 'Secured by Razorpay Standard 256-bit SSL Checkout (UPI, Cards, NetBanking)'}
+            </span>
           </div>
         </div>
       )}
@@ -1034,6 +1320,18 @@ END:VCALENDAR`;
             >
               <span>Back to Home</span>
             </button>
+
+            {onStartNewBooking && (
+              <button
+                type="button"
+                id="book-another-session-btn"
+                onClick={onStartNewBooking}
+                className="px-5 py-3.5 rounded-xl bg-white border border-stone-300 hover:bg-stone-50 text-stone-700 font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+              >
+                <RefreshCcw className="w-3.5 h-3.5 text-stone-500" />
+                <span>Book Another Session</span>
+              </button>
+            )}
           </div>
 
           {/* Preparation tips */}
@@ -1145,6 +1443,92 @@ END:VCALENDAR`;
             >
               Close Preview
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Razorpay Payment ID Recovery Modal */}
+      {showRecoveryModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-3xl border border-stone-200 max-w-md w-full p-6 sm:p-7 space-y-5 shadow-2xl relative">
+            <button
+              onClick={() => {
+                setShowRecoveryModal(false);
+                setRecoveryError(null);
+                setRecoverySuccess(null);
+              }}
+              className="absolute top-4 right-4 text-stone-400 hover:text-stone-700 text-sm font-bold p-1.5 rounded-full hover:bg-stone-100 cursor-pointer"
+            >
+              ✕
+            </button>
+
+            <div className="text-center space-y-2">
+              <div className="w-12 h-12 rounded-2xl bg-[#dc3c1c]/10 text-[#dc3c1c] flex items-center justify-center mx-auto">
+                <KeyRound className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-[#1c1a18]">Restore Pre-Paid Session</h3>
+              <p className="text-xs text-stone-500">
+                Did your browser refresh or close after payment? Enter the Razorpay Payment ID from your email or SMS receipt.
+              </p>
+            </div>
+
+            <form onSubmit={handleRecoverPayment} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#1c1a18] mb-1.5">
+                  Razorpay Payment ID (e.g. pay_Q8e...):
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="pay_..."
+                  value={recoveryPaymentId}
+                  onChange={(e) => setRecoveryPaymentId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 text-xs font-mono rounded-xl border border-stone-300 bg-[#fdfbf8] focus:border-[#dc3c1c] focus:outline-none"
+                />
+                <span className="block text-[11px] text-stone-400 mt-1">
+                  Check your SMS/Email from Razorpay for the Payment ID.
+                </span>
+              </div>
+
+              {recoveryError && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-600" />
+                  <span>{recoveryError}</span>
+                </div>
+              )}
+
+              {recoverySuccess && (
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-start gap-2 font-medium">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
+                  <span>{recoverySuccess}</span>
+                </div>
+              )}
+
+              <div className="space-y-2 pt-1">
+                <button
+                  type="submit"
+                  disabled={recoveryLoading}
+                  className="w-full py-3 rounded-xl bg-[#dc3c1c] hover:bg-[#c23214] text-white text-xs font-bold shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-75"
+                >
+                  {recoveryLoading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Verifying with Razorpay...</span>
+                    </>
+                  ) : (
+                    <span>Verify & Restore Pre-Paid Session →</span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowRecoveryModal(false)}
+                  className="w-full py-2 text-xs font-semibold text-stone-500 hover:text-stone-800 cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

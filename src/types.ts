@@ -14,6 +14,20 @@ export type SessionMode = 'video' | 'audio';
 
 export type SessionDuration = 30 | 45 | 60 | 'package-4';
 
+export interface PrePaidBookingInfo {
+  packageId: string;
+  packageTitle: string;
+  price: number;
+  paymentId: string;
+  orderId: string;
+  timestamp?: number | string;
+}
+
+export interface NavigateOptions {
+  packageId?: string;
+  prePaidInfo?: PrePaidBookingInfo;
+}
+
 export interface BookingDetails {
   id: string;
   fullName: string;
