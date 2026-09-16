@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { fetchPaymentDetails } from '../server/razorpay';
+import { fetchPaymentDetails } from './_razorpay.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Handle CORS preflight

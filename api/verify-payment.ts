@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { verifySignature } from '../server/razorpay';
+import { verifySignature } from './_razorpay.js';
 
 export default function handler(req: VercelRequest, res: VercelResponse) {
   // Handle CORS preflight
