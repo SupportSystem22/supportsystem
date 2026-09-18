@@ -161,6 +161,44 @@ export const BookingPage: React.FC<BookingPageProps> = ({
   const [isProcessingPayment, setIsProcessingPayment] = useState<boolean>(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [paymentNotice, setPaymentNotice] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+
+  const validatePhone = (rawPhone: string, countryCode: string): string | null => {
+    const digits = rawPhone.replace(/\D/g, '');
+    if (!digits) {
+      return 'Mobile number is required for WhatsApp reminders & Zoom details.';
+    }
+
+    if (countryCode === '+91') {
+      if (digits.length !== 10) {
+        return `Indian mobile number must be exactly 10 digits (currently ${digits.length} digits).`;
+      }
+      if (!/^[6-9]/.test(digits)) {
+        return 'Indian mobile numbers must start with 6, 7, 8, or 9.';
+      }
+    } else {
+      if (digits.length < 7 || digits.length > 15) {
+        return 'Please enter a valid phone number (7 to 15 digits).';
+      }
+    }
+
+    return null;
+  };
+
+  const handlePhoneChange = (val: string, countryCode: string) => {
+    // Digits only
+    const digits = val.replace(/\D/g, '');
+    const maxLen = countryCode === '+91' ? 10 : 15;
+    const sanitized = digits.slice(0, maxLen);
+
+    setFormData((prev) => ({ ...prev, phone: sanitized }));
+
+    // Re-validate if error was already shown
+    if (phoneError) {
+      const err = validatePhone(sanitized, countryCode);
+      setPhoneError(err);
+    }
+  };
 
   // UI helpers for confirmation
   const [copiedLink, setCopiedLink] = useState(false);
@@ -715,6 +753,12 @@ END:VCALENDAR`;
         <form
           onSubmit={(e) => {
             e.preventDefault();
+            const phoneErr = validatePhone(formData.phone, formData.countryCode);
+            if (phoneErr) {
+              setPhoneError(phoneErr);
+              return;
+            }
+            setPhoneError(null);
             setStep(3);
           }}
           className="bg-white rounded-3xl border border-[#e5dcce] p-6 sm:p-8 space-y-6 shadow-sm animate-fadeIn"
@@ -777,21 +821,46 @@ END:VCALENDAR`;
               />
             </div>
 
-            {/* Phone & WhatsApp Number with Notice */}
+            {/* Phone & WhatsApp Number with Strict Validation */}
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-xs font-semibold text-[#1c1a18] flex items-center gap-1">
                   <Smartphone className="w-3.5 h-3.5 text-stone-500" /> WhatsApp Number *
                 </label>
-                <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
-                  WhatsApp reminder sent here
-                </span>
+                <div className="flex items-center gap-1.5">
+                  {formData.countryCode === '+91' && (
+                    <span
+                      className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                        formData.phone.length === 10
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-stone-100 text-stone-500'
+                      }`}
+                    >
+                      {formData.phone.length}/10
+                    </span>
+                  )}
+                  <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                    WhatsApp reminder sent here
+                  </span>
+                </div>
               </div>
               <div className="flex gap-2">
                 <select
                   value={formData.countryCode}
-                  onChange={(e) => setFormData({ ...formData, countryCode: e.target.value })}
-                  className="px-2.5 py-2.5 text-xs rounded-xl border border-stone-300 bg-[#f8f4ec] font-semibold focus:outline-none"
+                  onChange={(e) => {
+                    const newCode = e.target.value;
+                    const maxLen = newCode === '+91' ? 10 : 15;
+                    const trimmedPhone = formData.phone.slice(0, maxLen);
+                    setFormData((prev) => ({
+                      ...prev,
+                      countryCode: newCode,
+                      phone: trimmedPhone,
+                    }));
+                    if (phoneError) {
+                      setPhoneError(validatePhone(trimmedPhone, newCode));
+                    }
+                  }}
+                  className="px-2.5 py-2.5 text-xs rounded-xl border border-stone-300 bg-[#f8f4ec] font-semibold focus:outline-none shrink-0"
                 >
                   <option value="+91">🇮🇳 +91 (India)</option>
                   <option value="+1">🇺🇸 +1 (USA)</option>
@@ -803,13 +872,36 @@ END:VCALENDAR`;
                 </select>
                 <input
                   type="tel"
+                  inputMode="numeric"
                   required
-                  placeholder="98765 43210"
+                  maxLength={formData.countryCode === '+91' ? 10 : 15}
+                  placeholder={formData.countryCode === '+91' ? '9876543210' : 'Mobile number'}
                   value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className="flex-1 px-3.5 py-2.5 text-xs rounded-xl border border-stone-300 bg-[#fdfbf8] focus:border-[#dc3c1c] focus:outline-none"
+                  onChange={(e) => handlePhoneChange(e.target.value, formData.countryCode)}
+                  onBlur={() => {
+                    const err = validatePhone(formData.phone, formData.countryCode);
+                    setPhoneError(err);
+                  }}
+                  className={`flex-1 px-3.5 py-2.5 text-xs rounded-xl border bg-[#fdfbf8] focus:outline-none transition-all ${
+                    phoneError
+                      ? 'border-red-500 focus:border-red-600 bg-red-50/20 ring-1 ring-red-500/20'
+                      : formData.countryCode === '+91' && formData.phone.length === 10 && /^[6-9]/.test(formData.phone)
+                      ? 'border-emerald-500 focus:border-emerald-600 bg-emerald-50/20'
+                      : 'border-stone-300 focus:border-[#dc3c1c]'
+                  }`}
                 />
               </div>
+              {phoneError && (
+                <p className="text-[11px] text-red-600 font-semibold mt-1.5 flex items-center gap-1 animate-fadeIn">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-600" />
+                  <span>{phoneError}</span>
+                </p>
+              )}
+              {!phoneError && formData.countryCode === '+91' && formData.phone.length > 0 && formData.phone.length < 10 && (
+                <p className="text-[10px] text-stone-500 mt-1">
+                  Enter {10 - formData.phone.length} more digit{10 - formData.phone.length > 1 ? 's' : ''} (e.g. 9876543210)
+                </p>
+              )}
             </div>
           </div>
 
