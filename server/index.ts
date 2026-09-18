@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import { createOrder, verifySignature, fetchPaymentDetails } from './razorpay';
+import { sendBookingNotificationEmails } from './email';
 
 dotenv.config();
 
@@ -150,6 +151,31 @@ app.post('/api/check-payment', async (req: Request, res: Response) => {
     return res.status(statusCode).json({
       success: false,
       error: error.message || 'Failed to check payment status',
+    });
+  }
+});
+
+/**
+ * EMAIL NOTIFICATION ENDPOINT: Send Mentee confirmation and Mentor notification
+ * Endpoint: POST /api/send-booking-email
+ */
+app.post('/api/send-booking-email', async (req: Request, res: Response) => {
+  try {
+    const payload = req.body;
+    if (!payload || !payload.customerEmail || !payload.sessionDate || !payload.sessionTime) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required booking fields for email notification (customerEmail, sessionDate, sessionTime)',
+      });
+    }
+
+    const result = await sendBookingNotificationEmails(payload);
+    return res.status(200).json(result);
+  } catch (error: any) {
+    console.error('Error in /api/send-booking-email:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to send booking notification email',
     });
   }
 });

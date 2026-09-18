@@ -34,6 +34,7 @@ import {
 import { initiateRazorpayCheckout } from '../utils/razorpay';
 import { RazorpayPaymentSuccessResponse } from '../vite-env';
 import { recoverPaymentFromBackend } from '../utils/paymentStorage';
+import { sendBookingEmailNotification } from '../utils/emailNotification';
 
 interface BookingPageProps {
   onNavigate: (page: PageView, options?: any) => void;
@@ -288,6 +289,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({
         setIsProcessingPayment(false);
         setConfirmedBooking(newBooking);
         onBookingConfirmed(newBooking);
+        sendBookingEmailNotification(newBooking, prePaidInfo.paymentId, prePaidInfo.orderId);
         if (onClearPrePaidInfo) {
           onClearPrePaidInfo();
         }
@@ -364,6 +366,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({
           setIsProcessingPayment(false);
           setConfirmedBooking(newBooking);
           onBookingConfirmed(newBooking);
+          sendBookingEmailNotification(newBooking, response.razorpay_payment_id, response.razorpay_order_id);
           setStep(4);
         },
         onError: (err) => {
