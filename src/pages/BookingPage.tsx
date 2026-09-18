@@ -287,7 +287,17 @@ export const BookingPage: React.FC<BookingPageProps> = ({
     setPaymentNotice(null);
     setIsProcessingPayment(true);
 
-    const fullPhone = `${formData.countryCode} ${formData.phone.replace(/^[+]?\d{1,3}\s?/, '')}`;
+    const rawDigits = formData.phone.replace(/\D/g, '');
+    const countryDigits = formData.countryCode.replace(/\D/g, '');
+    let normalizedPhone = rawDigits;
+    // Only strip leading country code if user explicitly typed country code digits twice (e.g. 919327348373)
+    if (countryDigits && rawDigits.startsWith(countryDigits) && rawDigits.length === countryDigits.length + 10) {
+      normalizedPhone = rawDigits.slice(countryDigits.length);
+    } else if (rawDigits.startsWith('0') && rawDigits.length === 11) {
+      normalizedPhone = rawDigits.slice(1);
+    }
+
+    const fullPhone = `${formData.countryCode} ${normalizedPhone}`;
 
     // CASE 1: Pre-Paid from Quick Pay or Prior Checkout - DO NOT charge again!
     if (prePaidInfo) {
@@ -464,6 +474,12 @@ export const BookingPage: React.FC<BookingPageProps> = ({
   };
 
   const handleResendWhatsApp = () => {
+    if (!confirmedBooking) return;
+    const cleanPhoneDigits = confirmedBooking.phone.replace(/[^0-9]/g, '');
+    const message = encodeURIComponent(
+      `✨ *SupportSystem - Session Confirmed!*\n\nHi ${confirmedBooking.fullName}, your private session details:\n📅 Date: ${confirmedBooking.preferredDate}\n⏰ Time: ${confirmedBooking.preferredTime}\n\n👉 *Join Zoom Meeting:* ${confirmedBooking.zoomJoinUrl}\nMeeting ID: ${confirmedBooking.zoomMeetingId}\nPasscode: ${confirmedBooking.zoomPasscode}\n\nPayment ID: ${confirmedBooking.transactionId || 'Confirmed'}`
+    );
+    window.open(`https://wa.me/${cleanPhoneDigits}?text=${message}`, '_blank');
     setWhatsappResent(true);
     setTimeout(() => setWhatsappResent(false), 3000);
   };
@@ -1491,7 +1507,7 @@ END:VCALENDAR`;
                   onClick={handleResendWhatsApp}
                   className="text-stone-600 hover:text-stone-900 font-medium cursor-pointer"
                 >
-                  {whatsappResent ? 'WhatsApp Resent ✓' : 'Resend WhatsApp'}
+                  {whatsappResent ? 'Opening WhatsApp... ✓' : 'Open in WhatsApp 📲'}
                 </button>
               </div>
             </div>
