@@ -269,8 +269,37 @@ export const BookingPage: React.FC<BookingPageProps> = ({
 
   const selectedPkg = pricingPackages.find((p) => p.id === selectedPackageId) || pricingPackages[1];
 
-  // Helper to generate Zoom details
-  const generateZoomDetails = () => {
+  // Helper to request real Zoom meeting from backend API with fallback
+  const fetchOrCreateZoomDetails = async (menteeName: string, durationMinutes: number) => {
+    try {
+      const response = await fetch('/api/create-zoom-meeting', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          menteeName: (menteeName || '').trim() || 'Mentee Friend',
+          sessionDate: selectedDate,
+          sessionTime: selectedTimeSlot,
+          durationMinutes: durationMinutes || 45,
+          topic: `SupportSystem Mentorship Session: ${(menteeName || '').trim() || 'Mentee Friend'}`,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.joinUrl && data.meetingId) {
+          return {
+            meetingId: data.meetingId,
+            passcode: data.passcode,
+            joinUrl: data.joinUrl,
+            startUrl: data.startUrl,
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('Could not connect to Zoom API backend, using fallback:', err);
+    }
+
+    // Graceful fallback if Zoom API is unreachable
     const rawMeetingId = `${Math.floor(800 + Math.random() * 199)} ${Math.floor(1000 + Math.random() * 8999)} ${Math.floor(1000 + Math.random() * 8999)}`;
     const passcode = `clarity${Math.floor(10 + Math.random() * 89)}`;
     const joinUrl = `https://us05web.zoom.us/j/${rawMeetingId.replace(/\s/g, '')}?pwd=${btoa(passcode)}`;
@@ -301,8 +330,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({
 
     // CASE 1: Pre-Paid from Quick Pay or Prior Checkout - DO NOT charge again!
     if (prePaidInfo) {
-      setTimeout(() => {
-        const zoom = generateZoomDetails();
+      const duration = typeof selectedPkg.durationMinutes === 'number' ? selectedPkg.durationMinutes : 45;
+      fetchOrCreateZoomDetails(formData.fullName, duration).then((zoom) => {
         const newBooking: BookingDetails = {
           id: `booking-${Date.now()}`,
           fullName: formData.fullName || 'Mentee Friend',
@@ -342,7 +371,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({
           onClearPrePaidInfo();
         }
         setStep(4);
-      }, 700);
+      });
       return;
     }
 
@@ -378,8 +407,10 @@ export const BookingPage: React.FC<BookingPageProps> = ({
           customer_notes: (formData.notes ? formData.notes.trim() : 'None').slice(0, 250),
         },
         themeColor: '#dc3c1c',
-        onSuccess: (response: RazorpayPaymentSuccessResponse) => {
-          const zoom = generateZoomDetails();
+        onSuccess: async (response: RazorpayPaymentSuccessResponse) => {
+          setIsProcessingPayment(true);
+          const duration = typeof selectedPkg.durationMinutes === 'number' ? selectedPkg.durationMinutes : 45;
+          const zoom = await fetchOrCreateZoomDetails(formData.fullName, duration);
           const newBooking: BookingDetails = {
             id: `booking-${Date.now()}`,
             fullName: formData.fullName || 'Mentee Friend',

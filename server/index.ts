@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import { createOrder, verifySignature, fetchPaymentDetails } from './razorpay';
 import { sendBookingNotificationEmails } from './email';
+import { createZoomMeeting } from './zoom';
 
 dotenv.config();
 
@@ -176,6 +177,24 @@ app.post('/api/send-booking-email', async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       error: error.message || 'Failed to send booking notification email',
+    });
+  }
+});
+
+/**
+ * ZOOM MEETING CREATION ENDPOINT: Generate a live Zoom meeting via Server-to-Server OAuth
+ * Endpoint: POST /api/create-zoom-meeting
+ */
+app.post('/api/create-zoom-meeting', async (req: Request, res: Response) => {
+  try {
+    const payload = req.body || {};
+    const result = await createZoomMeeting(payload);
+    return res.status(200).json(result);
+  } catch (error: any) {
+    console.error('Error in /api/create-zoom-meeting:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to create Zoom meeting',
     });
   }
 });
