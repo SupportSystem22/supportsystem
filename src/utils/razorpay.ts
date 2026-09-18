@@ -67,7 +67,7 @@ export async function createBackendOrder(amountInPaise: number, currency = 'INR'
     throw new Error(data.error || `Failed to create order (HTTP ${response.status})`);
   }
 
-  return data as { order_id: string; amount: number; currency: string };
+  return data as { order_id: string; amount: number; currency: string; key_id?: string };
 }
 
 /**
@@ -103,15 +103,6 @@ export async function verifyBackendPayment(orderId: string, paymentId: string, s
  * 5. On success, verifies signature on backend
  */
 export async function initiateRazorpayCheckout(options: CheckoutOptions) {
-  const keyId = import.meta.env.VITE_RAZORPAY_KEY_ID;
-
-  if (!keyId) {
-    options.onError({
-      message: 'Razorpay Key ID not configured. Please set VITE_RAZORPAY_KEY_ID in .env.',
-    });
-    return;
-  }
-
   const scriptLoaded = await loadRazorpayScript();
   if (!scriptLoaded || !window.Razorpay) {
     options.onError({
@@ -136,8 +127,16 @@ export async function initiateRazorpayCheckout(options: CheckoutOptions) {
     return;
   }
 
+  const activeKeyId = orderData.key_id || import.meta.env.VITE_RAZORPAY_KEY_ID;
+  if (!activeKeyId) {
+    options.onError({
+      message: 'Razorpay Key ID not configured. Please check your environment variables.',
+    });
+    return;
+  }
+
   const rzpOptions = {
-    key: keyId,
+    key: activeKeyId,
     amount: orderData.amount,
     currency: orderData.currency,
     name: options.name || 'SupportSystem',

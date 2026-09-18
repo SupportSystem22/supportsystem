@@ -91,7 +91,7 @@ export const pricingPackages: PricingPackage[] = [
     durationMinutes: 30,
     title: '30-Minute Single Session',
     subtitle: 'Focused Clarity & Immediate Venting',
-    price: 499,
+    price: 1,
     features: [
       '1-to-1 Private Session (Video or Audio)',
       'Direct focus on one urgent dilemma or emotional burden',
@@ -106,7 +106,7 @@ export const pricingPackages: PricingPackage[] = [
     durationMinutes: 45,
     title: '45-Minute Deep Reflection',
     subtitle: 'Most Balanced Session Length',
-    price: 699,
+    price: 1,
     popular: true,
     features: [
       '1-to-1 Private Session (Video or Audio)',
@@ -122,7 +122,7 @@ export const pricingPackages: PricingPackage[] = [
     durationMinutes: 60,
     title: '60-Minute Comprehensive Mentorship',
     subtitle: 'Thorough Life Guidance & Direction',
-    price: 999,
+    price: 1,
     features: [
       'Extended 60-Minute 1-to-1 Session',
       'In-depth exploration of core patterns & life transitions',
@@ -137,7 +137,7 @@ export const pricingPackages: PricingPackage[] = [
     durationMinutes: '4 x 45m',
     title: '4-Session Mentorship Journey',
     subtitle: 'Sustained Emotional Support & Transformation',
-    price: 2499,
+    price: 1,
     originalPrice: 2796,
     features: [
       'Four 45-Minute private sessions (spread across 4–6 weeks)',

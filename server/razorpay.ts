@@ -5,18 +5,59 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 /**
+ * Resolves Razorpay credentials conditionally based on RAZORPAY_MODE and available environment variables.
+ * Prioritizes PROD keys when available unless RAZORPAY_MODE is set to 'test'.
+ */
+export function getRazorpayCredentials(): { keyId: string; keySecret: string; mode: 'live' | 'test' } {
+  const explicitMode = (process.env.RAZORPAY_MODE || '').toLowerCase();
+
+  // If explicitly requested test mode
+  if (explicitMode === 'test') {
+    const keyId = process.env.RAZORPAY_TEST_KEY_ID || process.env.RAZORPAY_KEY_ID;
+    const keySecret = process.env.RAZORPAY_TEST_KEY_SECRET || process.env.RAZORPAY_KEY_SECRET;
+    if (keyId && keySecret) {
+      return { keyId, keySecret, mode: 'test' };
+    }
+  }
+
+  // 1. Check for PROD/LIVE keys
+  const prodKeyId = process.env.RAZORPAY_PROD_KEY_ID || process.env.RAZORPAY_LIVE_KEY_ID;
+  const prodKeySecret = process.env.RAZORPAY_PROD_KEY_SECRET || process.env.RAZORPAY_LIVE_KEY_SECRET;
+
+  if (prodKeyId && prodKeySecret) {
+    return { keyId: prodKeyId, keySecret: prodKeySecret, mode: 'live' };
+  }
+
+  // 2. Check for standard RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET
+  const generalKeyId = process.env.RAZORPAY_KEY_ID;
+  const generalKeySecret = process.env.RAZORPAY_KEY_SECRET;
+  if (generalKeyId && generalKeySecret) {
+    return {
+      keyId: generalKeyId,
+      keySecret: generalKeySecret,
+      mode: generalKeyId.startsWith('rzp_live_') ? 'live' : 'test',
+    };
+  }
+
+  // 3. Check for TEST keys
+  const testKeyId = process.env.RAZORPAY_TEST_KEY_ID;
+  const testKeySecret = process.env.RAZORPAY_TEST_KEY_SECRET;
+  if (testKeyId && testKeySecret) {
+    return { keyId: testKeyId, keySecret: testKeySecret, mode: 'test' };
+  }
+
+  const error: any = new Error(
+    'Razorpay credentials not configured. Please set RAZORPAY_PROD_KEY_ID & RAZORPAY_PROD_KEY_SECRET or RAZORPAY_KEY_ID & RAZORPAY_KEY_SECRET in .env'
+  );
+  error.statusCode = 401;
+  throw error;
+}
+
+/**
  * Returns a configured Razorpay client instance.
- * Throws an error if API credentials are not provided in environment variables.
  */
 export function getRazorpayClient(): Razorpay {
-  const keyId = process.env.RAZORPAY_KEY_ID;
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
-
-  if (!keyId || !keySecret) {
-    const error: any = new Error('Razorpay credentials not configured. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in .env');
-    error.statusCode = 401;
-    throw error;
-  }
+  const { keyId, keySecret } = getRazorpayCredentials();
 
   return new Razorpay({
     key_id: keyId,
@@ -35,6 +76,7 @@ export interface CreateOrderResult {
   order_id: string;
   amount: number;
   currency: string;
+  key_id: string;
 }
 
 /**
@@ -56,6 +98,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
     throw error;
   }
 
+  const { keyId } = getRazorpayCredentials();
   const razorpay = getRazorpayClient();
   const orderOptions = {
     amount: Math.round(amount),
@@ -70,6 +113,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
       order_id: order.id,
       amount: Number(order.amount),
       currency: order.currency,
+      key_id: keyId,
     };
   } catch (err: any) {
     if (err.statusCode === 401 || (err.error && err.error.code === 'BAD_REQUEST_ERROR' && err.statusCode === 401)) {
@@ -88,12 +132,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
  * Compares computed HMAC of `${order_id}|${payment_id}` with provided signature.
  */
 export function verifySignature(orderId: string, paymentId: string, signature: string): boolean {
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
-  if (!keySecret) {
-    const error: any = new Error('RAZORPAY_KEY_SECRET is not configured');
-    error.statusCode = 500;
-    throw error;
-  }
+  const { keySecret } = getRazorpayCredentials();
 
   if (!orderId || !paymentId || !signature) {
     return false;
