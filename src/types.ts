@@ -6,7 +6,8 @@ export type PageView =
   | 'forum'
   | 'how-it-works'
   | 'pricing'
-  | 'safety';
+  | 'safety'
+  | 'my-sessions';
 
 export type LanguageMode = 'en' | 'hi';
 
@@ -26,6 +27,7 @@ export interface PrePaidBookingInfo {
 export interface NavigateOptions {
   packageId?: string;
   prePaidInfo?: PrePaidBookingInfo;
+  viewBookingId?: string;
 }
 
 export interface BookingDetails {

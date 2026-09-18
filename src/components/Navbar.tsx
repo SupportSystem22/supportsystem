@@ -34,7 +34,12 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const navItems: { id: PageView; labelEn: string; labelHi: string; icon: React.FC<{ className?: string }> }[] = [
+  const navItems: {
+    id: PageView;
+    labelEn: string;
+    labelHi: string;
+    icon: React.FC<{ className?: string }>;
+  }[] = [
     { id: 'home', labelEn: 'Home', labelHi: 'होम', icon: Sparkles },
     { id: 'mentor', labelEn: 'Meet Siddhi', labelHi: 'मेंटर सिद्धि', icon: Sparkles },
     { id: 'how-it-works', labelEn: 'How It Works', labelHi: 'यह कैसे काम करता है', icon: HelpCircle },

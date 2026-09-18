@@ -100,6 +100,15 @@ export const Footer: React.FC<FooterProps> = ({
               </li>
               <li>
                 <button
+                  id="footer-nav-my-sessions"
+                  onClick={() => onNavigate('my-sessions')}
+                  className="hover:text-white transition-colors cursor-pointer"
+                >
+                  My Booked Sessions
+                </button>
+              </li>
+              <li>
+                <button
                   id="footer-nav-book"
                   onClick={() => onNavigate('book')}
                   className="text-[#f55938] hover:text-[#ff785a] font-semibold cursor-pointer"

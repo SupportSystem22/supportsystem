@@ -12,14 +12,15 @@ import { ChatPage } from './pages/ChatPage';
 import { ForumPage } from './pages/ForumPage';
 import { HowItWorksPage } from './pages/HowItWorksPage';
 import { PricingPage } from './pages/PricingPage';
+import { MySessionsPage } from './pages/MySessionsPage';
 
 import {
   savePrePaidInfo,
   getPrePaidInfo,
   clearPrePaidInfo,
-  saveActiveBooking,
+  saveBooking,
+  getAllBookings,
   getActiveBooking,
-  clearActiveBooking,
 } from './utils/paymentStorage';
 
 export default function App() {
@@ -34,13 +35,20 @@ export default function App() {
     tab: 'disclaimer',
   });
 
-  // Persistent booking and pre-paid state across page reloads
+  // Persistent bookings and pre-paid state across page reloads
+  const [allBookings, setAllBookings] = useState<BookingDetails[]>(() => getAllBookings());
   const [activeBooking, setActiveBooking] = useState<BookingDetails | null>(() => getActiveBooking());
   const [prePaidInfo, setPrePaidInfo] = useState<PrePaidBookingInfo | null>(() => getPrePaidInfo());
   const [selectedPackageId, setSelectedPackageId] = useState<string | undefined>(undefined);
+  const [viewBookingId, setViewBookingId] = useState<string | undefined>(undefined);
 
   // Scroll to top upon page navigation
   const handleNavigate = (page: PageView, options?: NavigateOptions) => {
+    if (options?.viewBookingId !== undefined) {
+      setViewBookingId(options.viewBookingId);
+    } else {
+      setViewBookingId(undefined);
+    }
     if (options?.prePaidInfo !== undefined) {
       setPrePaidInfo(options.prePaidInfo);
       if (options.prePaidInfo) {
@@ -74,8 +82,10 @@ export default function App() {
   };
 
   const handleBookingConfirmed = (booking: BookingDetails) => {
+    saveBooking(booking);
+    const updated = getAllBookings();
+    setAllBookings(updated);
     setActiveBooking(booking);
-    saveActiveBooking(booking);
     clearPrePaidInfo();
     setPrePaidInfo(null);
   };
@@ -86,11 +96,11 @@ export default function App() {
   };
 
   const handleStartNewBooking = () => {
-    setActiveBooking(null);
-    clearActiveBooking();
+    // Reset package & pre-payment selection for fresh booking, WITHOUT wiping saved sessions!
     setPrePaidInfo(null);
     clearPrePaidInfo();
     setSelectedPackageId(undefined);
+    setViewBookingId(undefined);
     handleNavigate('book');
   };
 
@@ -103,31 +113,42 @@ export default function App() {
         lang={lang}
         onToggleLang={handleToggleLang}
         onOpenCrisis={handleOpenCrisis}
-        hasActiveBooking={!!activeBooking}
+        hasActiveBooking={allBookings.length > 0}
       />
 
-      {/* Active Booking Banner (if user navigated away from booking or refreshed) */}
-      {activeBooking && currentPage !== 'book' && (
-        <div className="bg-emerald-900 text-white px-4 py-2.5 text-xs flex items-center justify-between shadow-sm animate-fadeIn">
+      {/* Booked Sessions Banner (Below Navbar) */}
+      {allBookings.length > 0 && currentPage !== 'my-sessions' && (
+        <div className="bg-emerald-950 text-white px-4 py-2.5 text-xs shadow-sm animate-fadeIn border-b border-emerald-900">
           <div className="max-w-6xl mx-auto w-full flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4">
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
               <span>
-                <strong>Upcoming Confirmed Session:</strong> {activeBooking.packageType.title} with Siddhi Patel on {activeBooking.preferredDate} at {activeBooking.preferredTime} (IST).
+                <strong>Your Booked Session:</strong> {allBookings[0].packageType.title} with Siddhi Patel on {allBookings[0].preferredDate} at {allBookings[0].preferredTime} (IST).
               </span>
             </div>
-            <button
-              onClick={() => handleNavigate('book')}
-              className="px-3 py-1 bg-white text-emerald-950 font-bold rounded-lg text-[11px] hover:bg-emerald-50 shrink-0 cursor-pointer shadow-sm"
-            >
-              View Zoom Link & Details →
-            </button>
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+              <button
+                id="banner-view-all-sessions-btn"
+                onClick={() => handleNavigate('my-sessions')}
+                className="px-3.5 py-1.5 bg-white hover:bg-emerald-50 text-emerald-950 font-bold rounded-lg text-[11px] shrink-0 cursor-pointer shadow-sm transition-colors flex items-center gap-1"
+              >
+                <span>View All Booked Sessions ({allBookings.length})</span>
+                <span>→</span>
+              </button>
+              <button
+                id="banner-book-another-btn"
+                onClick={handleStartNewBooking}
+                className="px-3 py-1.5 bg-emerald-800 hover:bg-emerald-700 text-emerald-100 font-semibold rounded-lg text-[11px] shrink-0 cursor-pointer transition-colors"
+              >
+                + Book Another
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {/* Pre-Paid Notice Banner (if user paid via Quick Pay and navigated away or refreshed) */}
-      {!activeBooking && prePaidInfo && currentPage !== 'book' && (
+      {allBookings.length === 0 && prePaidInfo && currentPage !== 'book' && (
         <div className="bg-[#fff3eb] border-b border-[#ffd6c4] text-[#a02c12] px-4 py-2 text-xs flex items-center justify-between animate-fadeIn">
           <div className="max-w-6xl mx-auto w-full flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4">
             <div>
@@ -170,6 +191,17 @@ export default function App() {
             prePaidInfo={prePaidInfo}
             onClearPrePaidInfo={handleClearPrePaid}
             activeBooking={activeBooking}
+            existingBookings={allBookings}
+            viewBookingId={viewBookingId}
+            onStartNewBooking={handleStartNewBooking}
+          />
+        )}
+
+        {currentPage === 'my-sessions' && (
+          <MySessionsPage
+            bookings={allBookings}
+            onNavigate={handleNavigate}
+            lang={lang}
             onStartNewBooking={handleStartNewBooking}
           />
         )}

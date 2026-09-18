@@ -55,21 +55,79 @@ export function clearPrePaidInfo() {
   }
 }
 
+const ALL_BOOKINGS_STORAGE_KEY = 'supportsystem_all_bookings';
+
 /**
- * Save active confirmed booking to localStorage
+ * Retrieve all confirmed bookings from localStorage.
+ * Automatically migrates any legacy single booking into the array.
  */
-export function saveActiveBooking(booking: BookingDetails) {
+export function getAllBookings(): BookingDetails[] {
   try {
-    localStorage.setItem(ACTIVE_BOOKING_STORAGE_KEY, JSON.stringify(booking));
+    const raw = localStorage.getItem(ALL_BOOKINGS_STORAGE_KEY);
+    let bookings: BookingDetails[] = [];
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        bookings = parsed;
+      }
+    }
+
+    // Auto-migration: check if there's a legacy active booking not yet in allBookings
+    const legacyRaw = localStorage.getItem(ACTIVE_BOOKING_STORAGE_KEY);
+    if (legacyRaw) {
+      try {
+        const legacy = JSON.parse(legacyRaw) as BookingDetails;
+        if (legacy && legacy.id && !bookings.some((b) => b.id === legacy.id)) {
+          bookings.unshift(legacy);
+          localStorage.setItem(ALL_BOOKINGS_STORAGE_KEY, JSON.stringify(bookings));
+        }
+      } catch {
+        // ignore legacy parse errors
+      }
+    }
+
+    return bookings;
   } catch (err) {
-    console.warn('Failed to save active booking to localStorage:', err);
+    console.warn('Failed to read all bookings from localStorage:', err);
+    return [];
   }
 }
 
 /**
- * Retrieve active confirmed booking from localStorage
+ * Save a confirmed booking to localStorage.
+ * Appends to the all-bookings list and updates the active booking reference.
+ */
+export function saveBooking(booking: BookingDetails) {
+  try {
+    const bookings = getAllBookings();
+    const index = bookings.findIndex((b) => b.id === booking.id);
+    if (index >= 0) {
+      bookings[index] = booking;
+    } else {
+      bookings.unshift(booking);
+    }
+    localStorage.setItem(ALL_BOOKINGS_STORAGE_KEY, JSON.stringify(bookings));
+    // Also save as active booking for backwards compatibility
+    localStorage.setItem(ACTIVE_BOOKING_STORAGE_KEY, JSON.stringify(booking));
+  } catch (err) {
+    console.warn('Failed to save booking to localStorage:', err);
+  }
+}
+
+/**
+ * Save active confirmed booking to localStorage (backwards compatible alias)
+ */
+export function saveActiveBooking(booking: BookingDetails) {
+  saveBooking(booking);
+}
+
+/**
+ * Retrieve active confirmed booking (most recent from all bookings)
  */
 export function getActiveBooking(): BookingDetails | null {
+  const all = getAllBookings();
+  if (all.length > 0) return all[0];
+
   try {
     const raw = localStorage.getItem(ACTIVE_BOOKING_STORAGE_KEY);
     if (!raw) return null;
@@ -85,7 +143,24 @@ export function getActiveBooking(): BookingDetails | null {
 }
 
 /**
- * Clear active booking from localStorage
+ * Remove or cancel a specific booking by ID
+ */
+export function deleteBooking(bookingId: string): void {
+  try {
+    const bookings = getAllBookings().filter((b) => b.id !== bookingId);
+    localStorage.setItem(ALL_BOOKINGS_STORAGE_KEY, JSON.stringify(bookings));
+    if (bookings.length > 0) {
+      localStorage.setItem(ACTIVE_BOOKING_STORAGE_KEY, JSON.stringify(bookings[0]));
+    } else {
+      localStorage.removeItem(ACTIVE_BOOKING_STORAGE_KEY);
+    }
+  } catch (err) {
+    console.warn('Failed to delete booking from localStorage:', err);
+  }
+}
+
+/**
+ * Clear active booking pointer from localStorage
  */
 export function clearActiveBooking() {
   try {

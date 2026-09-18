@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { PageView, LanguageMode, SessionMode, BookingDetails, PrePaidBookingInfo } from '../types';
 import { pricingPackages, mentorData } from '../data/mentorData';
 import {
@@ -29,6 +29,7 @@ import {
   AlertCircle,
   KeyRound,
   RefreshCcw,
+  Calendar,
 } from 'lucide-react';
 import { initiateRazorpayCheckout } from '../utils/razorpay';
 import { RazorpayPaymentSuccessResponse } from '../vite-env';
@@ -42,6 +43,8 @@ interface BookingPageProps {
   prePaidInfo?: PrePaidBookingInfo | null;
   onClearPrePaidInfo?: () => void;
   activeBooking?: BookingDetails | null;
+  existingBookings?: BookingDetails[];
+  viewBookingId?: string;
   onStartNewBooking?: () => void;
 }
 
@@ -53,18 +56,28 @@ export const BookingPage: React.FC<BookingPageProps> = ({
   prePaidInfo,
   onClearPrePaidInfo,
   activeBooking,
+  existingBookings = [],
+  viewBookingId,
   onStartNewBooking,
 }) => {
-  // If user has an active confirmed booking, stay on Step 4 (Zoom details) across page reloads!
-  // If user came from pre-payment, start directly at Step 2 (Intake Form)
-  // Otherwise start at Step 1
+  // If user requested to view a specific booking confirmation, find it
+  const targetBooking = useMemo(() => {
+    if (viewBookingId && existingBookings.length > 0) {
+      return existingBookings.find((b) => b.id === viewBookingId) || null;
+    }
+    return null;
+  }, [viewBookingId, existingBookings]);
+
+  // If user came specifically to view a booking, show Step 4.
+  // If user came from verified pre-payment, start directly at Step 2 (Intake Form).
+  // Otherwise start at Step 1 for booking without wiping past sessions!
   const [step, setStep] = useState<1 | 2 | 3 | 4>(() => {
-    if (activeBooking) return 4;
+    if (targetBooking) return 4;
     if (prePaidInfo) return 2;
     return 1;
   });
 
-  const [confirmedBooking, setConfirmedBooking] = useState<BookingDetails | null>(() => activeBooking || null);
+  const [confirmedBooking, setConfirmedBooking] = useState<BookingDetails | null>(() => targetBooking || null);
 
   // Form states
   const [sessionMode, setSessionMode] = useState<SessionMode>('video');
@@ -80,8 +93,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({
   const [recoverySuccess, setRecoverySuccess] = useState<string | null>(null);
 
   useEffect(() => {
-    if (activeBooking) {
-      setConfirmedBooking(activeBooking);
+    if (targetBooking) {
+      setConfirmedBooking(targetBooking);
       setStep(4);
     } else if (prePaidInfo?.packageId) {
       setSelectedPackageId(prePaidInfo.packageId);
@@ -89,7 +102,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({
     } else if (initialPackageId) {
       setSelectedPackageId(initialPackageId);
     }
-  }, [activeBooking, prePaidInfo, initialPackageId]);
+  }, [targetBooking, prePaidInfo, initialPackageId]);
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -103,7 +116,44 @@ export const BookingPage: React.FC<BookingPageProps> = ({
     notes: '',
   });
 
-  const [selectedDate, setSelectedDate] = useState<string>('Tomorrow, Aug 27');
+  // Dynamic upcoming dates for today, tomorrow, and the next 4 days
+  const availableDates = useMemo(() => {
+    const dates = [];
+    const now = new Date();
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    for (let i = 0; i < 5; i++) {
+      const d = new Date(now);
+      d.setDate(now.getDate() + i);
+      const m = monthNames[d.getMonth()];
+      const dayNum = d.getDate();
+      const dayName = dayNames[d.getDay()];
+
+      let label = `${dayName}`;
+      let date = `${dayName}, ${m} ${dayNum}`;
+
+      if (i === 0) {
+        label = 'Today (Immediate)';
+        date = `Today, ${m} ${dayNum}`;
+      } else if (i === 1) {
+        label = 'Tomorrow';
+        date = `Tomorrow, ${m} ${dayNum}`;
+      }
+
+      dates.push({ label, date });
+    }
+    return dates;
+  }, []);
+
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    const now = new Date();
+    const tom = new Date(now);
+    tom.setDate(now.getDate() + 1);
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `Tomorrow, ${monthNames[tom.getMonth()]} ${tom.getDate()}`;
+  });
+
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>('3:00 PM - 3:45 PM');
   const [paymentMethod, setPaymentMethod] = useState<'upi' | 'card' | 'netbanking'>('upi');
   const [upiId, setUpiId] = useState<string>('');
@@ -131,13 +181,32 @@ export const BookingPage: React.FC<BookingPageProps> = ({
     'Other / General Venting',
   ];
 
-  const availableDates = [
-    { label: 'Today (Immediate)', date: 'Today, Aug 26' },
-    { label: 'Tomorrow', date: 'Tomorrow, Aug 27' },
-    { label: 'Thursday', date: 'Thu, Aug 28' },
-    { label: 'Friday', date: 'Fri, Aug 29' },
-    { label: 'Saturday', date: 'Sat, Aug 30' },
-  ];
+  // Helper to check if a specific time slot is already booked by the current user
+  const isSlotBookedByMe = (time: string, date: string) => {
+    if (!existingBookings || existingBookings.length === 0) return false;
+    return existingBookings.some(
+      (b) => b.preferredDate === date && b.preferredTime === time
+    );
+  };
+
+  const handleBookAnotherSession = () => {
+    setConfirmedBooking(null);
+    setStep(1);
+    setFormData({
+      fullName: '',
+      age: '',
+      gender: '',
+      email: '',
+      phone: '',
+      countryCode: '+91',
+      preferredLanguage: 'Hindi',
+      reasons: [],
+      notes: '',
+    });
+    if (onStartNewBooking) {
+      onStartNewBooking();
+    }
+  };
 
   const availableSlots = [
     { time: '11:00 AM - 11:45 AM', period: 'Morning' },
@@ -399,6 +468,32 @@ END:VCALENDAR`;
           Complete your booking and payment to automatically receive your private Zoom meeting link directly on Email & WhatsApp.
         </p>
       </div>
+
+      {/* Existing Bookings Notice Banner */}
+      {existingBookings.length > 0 && step !== 4 && (
+        <div className="p-4 rounded-2xl bg-[#fff8f5] border border-[#fbdcd5] text-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fadeIn shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-[#dc3c1c] text-white shrink-0">
+              <Calendar className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-[#1c1a18]">
+                You have {existingBookings.length} upcoming scheduled session{existingBookings.length > 1 ? 's' : ''}
+              </p>
+              <p className="text-[11px] text-stone-500">
+                Next: {existingBookings[0].packageType.title} on {existingBookings[0].preferredDate} at {existingBookings[0].preferredTime}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => onNavigate('my-sessions')}
+            className="px-4 py-2 rounded-xl bg-[#22201e] hover:bg-black text-white text-xs font-bold transition-all flex items-center gap-1.5 self-start sm:self-auto shrink-0 shadow-sm cursor-pointer"
+          >
+            <span>View My Booked Sessions</span>
+            <ArrowRight className="w-3.5 h-3.5 text-[#ff785a]" />
+          </button>
+        </div>
+      )}
 
       {/* Pre-Paid Razorpay Notice Banner */}
       {prePaidInfo && (
@@ -833,23 +928,42 @@ END:VCALENDAR`;
             <label className="block text-xs font-semibold text-[#1c1a18]">Available Slots (IST):</label>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {availableSlots.map((slot, idx) => {
-                const isSelected = selectedTimeSlot === slot.time;
+                const isBooked = isSlotBookedByMe(slot.time, selectedDate);
+                const isSelected = selectedTimeSlot === slot.time && !isBooked;
+
                 return (
                   <button
                     key={idx}
                     type="button"
-                    onClick={() => setSelectedTimeSlot(slot.time)}
+                    disabled={isBooked}
+                    onClick={() => {
+                      if (!isBooked) setSelectedTimeSlot(slot.time);
+                    }}
                     className={`p-3.5 rounded-xl border text-left transition-all flex items-center justify-between ${
-                      isSelected
+                      isBooked
+                        ? 'border-stone-200 bg-stone-100 text-stone-400 cursor-not-allowed opacity-75'
+                        : isSelected
                         ? 'border-[#dc3c1c] bg-[#fff5f2] ring-2 ring-[#dc3c1c]/20 font-bold'
                         : 'border-stone-200 bg-white hover:border-stone-300'
                     }`}
                   >
                     <div className="flex items-center gap-2">
-                      <Clock className={`w-4 h-4 ${isSelected ? 'text-[#dc3c1c]' : 'text-stone-400'}`} />
-                      <span className="text-xs text-[#1c1a18]">{slot.time}</span>
+                      <Clock
+                        className={`w-4 h-4 ${
+                          isSelected ? 'text-[#dc3c1c]' : isBooked ? 'text-stone-300' : 'text-stone-400'
+                        }`}
+                      />
+                      <span className={`text-xs ${isBooked ? 'line-through text-stone-500' : 'text-[#1c1a18]'}`}>
+                        {slot.time}
+                      </span>
                     </div>
-                    <span className="text-[10px] text-stone-400 uppercase">{slot.period}</span>
+                    {isBooked ? (
+                      <span className="text-[10px] text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full font-bold">
+                        Already Booked
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-stone-400 uppercase">{slot.period}</span>
+                    )}
                   </button>
                 );
               })}
@@ -1303,35 +1417,34 @@ END:VCALENDAR`;
           </div>
 
           {/* Next Steps / Chat CTA */}
-          <div className="flex flex-col sm:flex-row gap-3 justify-center max-w-md mx-auto">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3 justify-center max-w-lg mx-auto">
             <button
               id="start-chat-with-mentor-btn"
               onClick={() => onNavigate('chat')}
-              className="px-6 py-3.5 rounded-xl bg-[#22201e] hover:bg-stone-800 text-white font-semibold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="px-5 py-3.5 rounded-xl bg-[#22201e] hover:bg-stone-800 text-white font-semibold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <MessageSquare className="w-4 h-4 text-[#ff785a]" />
-              <span>Leave a Pre-Session Message for Siddhi</span>
+              <span>Leave Pre-Session Message</span>
             </button>
 
             <button
-              id="back-home-btn"
-              onClick={() => onNavigate('home')}
-              className="px-5 py-3.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 font-semibold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+              id="view-my-sessions-step4-btn"
+              onClick={() => onNavigate('my-sessions')}
+              className="px-5 py-3.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
             >
-              <span>Back to Home</span>
+              <Calendar className="w-3.5 h-3.5 text-[#dc3c1c]" />
+              <span>View All My Booked Sessions</span>
             </button>
 
-            {onStartNewBooking && (
-              <button
-                type="button"
-                id="book-another-session-btn"
-                onClick={onStartNewBooking}
-                className="px-5 py-3.5 rounded-xl bg-white border border-stone-300 hover:bg-stone-50 text-stone-700 font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
-              >
-                <RefreshCcw className="w-3.5 h-3.5 text-stone-500" />
-                <span>Book Another Session</span>
-              </button>
-            )}
+            <button
+              type="button"
+              id="book-another-session-btn"
+              onClick={handleBookAnotherSession}
+              className="px-5 py-3.5 rounded-xl bg-[#dc3c1c] hover:bg-[#c23214] text-white font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+            >
+              <RefreshCcw className="w-3.5 h-3.5 text-white" />
+              <span>+ Book Another Session</span>
+            </button>
           </div>
 
           {/* Preparation tips */}
