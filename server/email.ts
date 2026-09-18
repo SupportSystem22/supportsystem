@@ -49,10 +49,11 @@ function getEmailTransporter() {
 /**
  * Sends both Mentee confirmation email and Mentor booking notification email.
  * Adheres strictly to Google Gmail Anti-Spam & Deliverability Standards:
- * - Includes both clean Multipart Text and Responsive HTML
- * - Proper From, Reply-To, and Message-ID headers
- * - Accurate Preheaders and CAN-SPAM compliant footers
- * - Inline CSS styled to SupportSystem's warm terracotta brand theme
+ * - Clean, standard RFC transactional headers
+ * - Dual-part Plain Text + HTML format
+ * - Zero hidden-div / zero-opacity font tricks (avoiding Gmail spam filter heuristics)
+ * - Clean transactional subject lines
+ * - Inline CSS styled to SupportSystem's warm brand theme
  */
 export async function sendBookingNotificationEmails(payload: BookingEmailPayload): Promise<{
   success: boolean;
@@ -93,54 +94,52 @@ export async function sendBookingNotificationEmails(payload: BookingEmailPayload
   // 1. MENTEE CONFIRMATION EMAIL
   // ==========================================
   if (payload.customerEmail && payload.customerEmail.includes('@')) {
-    const customerSubject = `Session Confirmed: ${payload.packageTitle} on ${payload.sessionDate} at ${payload.sessionTime}`;
-    const preheaderText = `Your 1-to-1 session with SupportSystem is confirmed. Zoom Meeting Link: ${payload.meetingLink}`;
+    const customerSubject = `Booking Confirmation: Your 1-to-1 session with SupportSystem`;
 
     // Plain text alternative (Google anti-spam requirement)
     const customerPlainText = `
 SupportSystem - 1-to-1 Mentorship & Clarity
---------------------------------------------------
-Session Confirmed & Scheduled
+==================================================
+Booking Confirmation & Session Details
 
 Hi ${payload.customerName},
 
-Your 1-to-1 private session has been confirmed. Below are your meeting credentials and schedule details:
+Your 1-to-1 private session has been confirmed. Below are your meeting credentials and schedule:
 
 • Package: ${payload.packageTitle} (${payload.packageDuration || 'Session'})
 • Date: ${payload.sessionDate}
 • Time: ${payload.sessionTime}
-• Mode: ${modeLabel}
+• Format: ${modeLabel}
 
-ZOOM MEETING DETAILS:
-• Direct Join Link: ${payload.meetingLink}
+ZOOM MEETING CREDENTIALS:
+• Join Link: ${payload.meetingLink}
 • Meeting ID: ${payload.zoomMeetingId}
 • Passcode: ${payload.zoomPasscode}
 
 PAYMENT RECEIPT:
 • Razorpay Payment ID: ${payload.paymentId}
 • Amount Paid: ₹${payload.packagePrice}
-• Status: Confirmed & Paid
+• Booking ID: ${payload.bookingId}
 
 BEFORE YOUR SESSION:
-1. Ensure you have the Zoom app installed on your phone or laptop.
-2. Join from a quiet, private space where you feel relaxed.
-3. Camera is always optional—your comfort comes first.
+1. Ensure you have Zoom installed on your device.
+2. Join from a quiet, private space.
+3. Camera is optional—your comfort comes first.
 
-Need to reschedule or have questions? Simply reply directly to this email or contact supportsystem22@gmail.com.
+Have questions or need to reschedule? Reply directly to this email at supportsystem22@gmail.com.
 
 Warm regards,
 SupportSystem Team
 supportsystem22@gmail.com
     `.trim();
 
-    // Responsive HTML with SupportSystem Brand Styling
+    // Clean, modern HTML with zero spam trigger elements
     const customerHtml = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <title>${customerSubject}</title>
   <style type="text/css">
     body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
@@ -151,31 +150,26 @@ supportsystem22@gmail.com
   </style>
 </head>
 <body style="margin: 0; padding: 0; background-color: #fbf9f5; color: #1c1a18;">
-  
-  <!-- Inbox Preheader (visible only in mail client preview) -->
-  <div style="display: none; font-size: 1px; color: #fbf9f5; line-height: 1px; max-height: 0px; max-width: 0px; opacity: 0; overflow: hidden;">
-    ${preheaderText} &zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;
-  </div>
 
   <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #fbf9f5;">
     <tr>
-      <td align="center" style="padding: 35px 15px;">
+      <td align="center" style="padding: 30px 15px;">
         
         <!-- Main Card -->
-        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 580px; background-color: #ffffff; border: 1px solid #ebe3d5; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 20px rgba(28,26,24,0.04);">
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 580px; background-color: #ffffff; border: 1px solid #ebe3d5; border-radius: 16px; overflow: hidden;">
           
           <!-- Brand Header -->
           <tr>
-            <td align="center" style="background-color: #1c1a18; padding: 28px 24px; border-bottom: 3px solid #dc3c1c;">
+            <td align="center" style="background-color: #1c1a18; padding: 24px 20px; border-bottom: 3px solid #dc3c1c;">
               <table border="0" cellpadding="0" cellspacing="0">
                 <tr>
                   <td align="center">
-                    <span style="font-size: 22px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px; text-decoration: none;">SupportSystem</span>
+                    <span style="font-size: 22px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px;">SupportSystem</span>
                   </td>
                 </tr>
                 <tr>
                   <td align="center" style="padding-top: 4px;">
-                    <span style="font-size: 12px; color: #c4b9aa; font-weight: 500; letter-spacing: 0.3px;">Private 1-to-1 Mentorship & Clarity</span>
+                    <span style="font-size: 12px; color: #c4b9aa; font-weight: 500;">Private 1-to-1 Mentorship & Clarity</span>
                   </td>
                 </tr>
               </table>
@@ -184,13 +178,13 @@ supportsystem22@gmail.com
 
           <!-- Main Content Body -->
           <tr>
-            <td style="padding: 32px 28px;">
+            <td style="padding: 30px 24px;">
               
               <!-- Status Pill -->
-              <table border="0" cellpadding="0" cellspacing="0" style="margin-bottom: 18px;">
+              <table border="0" cellpadding="0" cellspacing="0" style="margin-bottom: 16px;">
                 <tr>
-                  <td style="background-color: #eaf7ed; border: 1px solid #c2e8c9; border-radius: 20px; padding: 5px 14px;">
-                    <span style="color: #1b5e20; font-size: 11px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase;">
+                  <td style="background-color: #eaf7ed; border: 1px solid #c2e8c9; border-radius: 20px; padding: 4px 12px;">
+                    <span style="color: #1b5e20; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;">
                       ✓ Booking & Payment Confirmed
                     </span>
                   </td>
@@ -198,35 +192,35 @@ supportsystem22@gmail.com
               </table>
 
               <!-- Greeting -->
-              <h1 style="margin: 0 0 10px 0; font-size: 20px; font-weight: 700; color: #1c1a18; line-height: 1.3;">
+              <h1 style="margin: 0 0 10px 0; font-size: 19px; font-weight: 700; color: #1c1a18; line-height: 1.3;">
                 Hi ${payload.customerName},
               </h1>
-              <p style="margin: 0 0 24px 0; font-size: 14px; line-height: 1.6; color: #5b534a;">
+              <p style="margin: 0 0 22px 0; font-size: 14px; line-height: 1.6; color: #5b534a;">
                 Your upcoming 1-to-1 session has been confirmed. Below are your meeting credentials, schedule, and preparation notes.
               </p>
 
               <!-- Session Highlights Box -->
-              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #fff9f8; border: 1px solid #f2ded8; border-radius: 16px; margin-bottom: 24px;">
+              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #fff9f8; border: 1px solid #f2ded8; border-radius: 14px; margin-bottom: 22px;">
                 <tr>
-                  <td style="padding: 20px 22px;">
+                  <td style="padding: 18px 20px;">
                     
                     <table border="0" cellpadding="0" cellspacing="0" width="100%">
                       <tr>
-                        <td style="padding-bottom: 14px;">
+                        <td style="padding-bottom: 12px;">
                           <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #9c8e7e; letter-spacing: 0.5px;">Package</div>
-                          <div style="font-size: 16px; font-weight: 800; color: #1c1a18; margin-top: 2px;">
+                          <div style="font-size: 15px; font-weight: 800; color: #1c1a18; margin-top: 2px;">
                             ${payload.packageTitle}
-                            <span style="font-size: 13px; font-weight: 700; color: #dc3c1c; margin-left: 6px;">(${payload.packageDuration || 'Session'})</span>
+                            <span style="font-size: 12px; font-weight: 700; color: #dc3c1c; margin-left: 4px;">(${payload.packageDuration || 'Session'})</span>
                           </div>
                         </td>
                       </tr>
                       <tr>
-                        <td style="padding-bottom: 14px;">
+                        <td style="padding-bottom: 12px;">
                           <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #9c8e7e; letter-spacing: 0.5px;">Scheduled Date & Time</div>
                           <div style="font-size: 15px; font-weight: 700; color: #dc3c1c; margin-top: 2px;">
                             📅 ${payload.sessionDate}
                           </div>
-                          <div style="font-size: 14px; font-weight: 600; color: #1c1a18; margin-top: 2px;">
+                          <div style="font-size: 13px; font-weight: 600; color: #1c1a18; margin-top: 2px;">
                             ⏰ ${payload.sessionTime}
                           </div>
                         </td>
@@ -234,7 +228,7 @@ supportsystem22@gmail.com
                       <tr>
                         <td>
                           <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #9c8e7e; letter-spacing: 0.5px;">Session Format</div>
-                          <div style="font-size: 14px; font-weight: 700; color: #1c1a18; margin-top: 2px;">
+                          <div style="font-size: 13px; font-weight: 700; color: #1c1a18; margin-top: 2px;">
                             ${modeLabel}
                           </div>
                         </td>
@@ -251,9 +245,9 @@ supportsystem22@gmail.com
                   <td align="center">
                     <table border="0" cellpadding="0" cellspacing="0" width="100%">
                       <tr>
-                        <td align="center" style="background-color: #dc3c1c; border-radius: 14px; box-shadow: 0 4px 14px rgba(220,60,28,0.28);">
-                          <a href="${payload.meetingLink}" target="_blank" style="display: block; padding: 16px 28px; font-size: 15px; font-weight: 800; color: #ffffff; text-decoration: none; text-align: center; letter-spacing: 0.2px;">
-                            👉 Join Zoom Meeting Directly
+                        <td align="center" style="background-color: #dc3c1c; border-radius: 12px;">
+                          <a href="${payload.meetingLink}" target="_blank" style="display: block; padding: 15px 24px; font-size: 14px; font-weight: 800; color: #ffffff; text-decoration: none; text-align: center; letter-spacing: 0.2px;">
+                            Join Zoom Meeting
                           </a>
                         </td>
                       </tr>
@@ -263,20 +257,20 @@ supportsystem22@gmail.com
               </table>
 
               <!-- Direct Credentials Card -->
-              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f7f4ed; border: 1px solid #eae2d3; border-radius: 12px; margin-bottom: 26px;">
+              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f7f4ed; border: 1px solid #eae2d3; border-radius: 10px; margin-bottom: 22px;">
                 <tr>
-                  <td style="padding: 14px 18px;">
+                  <td style="padding: 12px 16px;">
                     <table border="0" cellpadding="0" cellspacing="0" width="100%">
                       <tr>
                         <td style="font-size: 12px; color: #5b534a; padding-bottom: 4px;">
                           <strong>Meeting ID:</strong>
-                          <span style="font-family: Consolas, Monaco, monospace; font-size: 13px; font-weight: 700; color: #1c1a18; margin-left: 6px;">${payload.zoomMeetingId}</span>
+                          <span style="font-family: Consolas, Monaco, monospace; font-size: 13px; font-weight: 700; color: #1c1a18; margin-left: 4px;">${payload.zoomMeetingId}</span>
                         </td>
                       </tr>
                       <tr>
                         <td style="font-size: 12px; color: #5b534a;">
                           <strong>Passcode:</strong>
-                          <span style="font-family: Consolas, Monaco, monospace; font-size: 13px; font-weight: 700; color: #1c1a18; margin-left: 6px;">${payload.zoomPasscode}</span>
+                          <span style="font-family: Consolas, Monaco, monospace; font-size: 13px; font-weight: 700; color: #1c1a18; margin-left: 4px;">${payload.zoomPasscode}</span>
                         </td>
                       </tr>
                     </table>
@@ -285,38 +279,38 @@ supportsystem22@gmail.com
               </table>
 
               <!-- Payment Receipt Summary -->
-              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-top: 1px solid #ebe4d8; padding-top: 18px; margin-bottom: 24px;">
+              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-top: 1px solid #ebe4d8; padding-top: 16px; margin-bottom: 20px;">
                 <tr>
                   <td>
-                    <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #8c8072; letter-spacing: 0.5px; margin-bottom: 8px;">
+                    <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #8c8072; letter-spacing: 0.5px; margin-bottom: 6px;">
                       Payment Receipt
                     </div>
                     <table border="0" cellpadding="0" cellspacing="0" width="100%">
                       <tr>
-                        <td style="font-size: 13px; color: #5b534a; padding: 2px 0;">Amount Paid:</td>
-                        <td align="right" style="font-size: 14px; font-weight: 800; color: #1c1a18;">₹${payload.packagePrice} (Paid via Razorpay)</td>
+                        <td style="font-size: 12px; color: #5b534a; padding: 2px 0;">Amount Paid:</td>
+                        <td align="right" style="font-size: 13px; font-weight: 800; color: #1c1a18;">₹${payload.packagePrice} (Paid via Razorpay)</td>
                       </tr>
                       <tr>
-                        <td style="font-size: 12px; color: #7a7064; padding: 2px 0;">Payment ID:</td>
-                        <td align="right" style="font-size: 12px; font-family: monospace; color: #1c1a18;">${payload.paymentId}</td>
+                        <td style="font-size: 11px; color: #7a7064; padding: 2px 0;">Payment ID:</td>
+                        <td align="right" style="font-size: 11px; font-family: monospace; color: #1c1a18;">${payload.paymentId}</td>
                       </tr>
                       <tr>
-                        <td style="font-size: 12px; color: #7a7064; padding: 2px 0;">Booking ID:</td>
-                        <td align="right" style="font-size: 12px; font-family: monospace; color: #1c1a18;">${payload.bookingId}</td>
+                        <td style="font-size: 11px; color: #7a7064; padding: 2px 0;">Booking ID:</td>
+                        <td align="right" style="font-size: 11px; font-family: monospace; color: #1c1a18;">${payload.bookingId}</td>
                       </tr>
                     </table>
                   </td>
                 </tr>
               </table>
 
-              <!-- Before Your Session Checklist -->
-              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #faf9f6; border-left: 3px solid #dc3c1c; border-radius: 4px; margin-bottom: 12px;">
+              <!-- Checklist -->
+              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #faf9f6; border-left: 3px solid #dc3c1c; border-radius: 4px;">
                 <tr>
-                  <td style="padding: 14px 16px;">
-                    <div style="font-size: 12px; font-weight: 700; color: #1c1a18; margin-bottom: 6px;">
+                  <td style="padding: 12px 14px;">
+                    <div style="font-size: 12px; font-weight: 700; color: #1c1a18; margin-bottom: 4px;">
                       Before your session:
                     </div>
-                    <div style="font-size: 12px; line-height: 1.6; color: #5b534a;">
+                    <div style="font-size: 12px; line-height: 1.5; color: #5b534a;">
                       • Ensure you have the Zoom app installed on your phone or laptop.<br>
                       • Sit in a quiet, private space where you feel calm and unhurried.<br>
                       • Camera is completely optional—your comfort comes first.
@@ -328,17 +322,17 @@ supportsystem22@gmail.com
             </td>
           </tr>
 
-          <!-- Footer (Anti-Spam & CAN-SPAM compliant) -->
+          <!-- Footer -->
           <tr>
-            <td style="background-color: #f7f4ee; padding: 24px 28px; border-top: 1px solid #ebe4d8; text-align: center;">
-              <p style="margin: 0 0 6px 0; font-size: 12px; font-weight: 600; color: #5b534a;">
+            <td style="background-color: #f7f4ee; padding: 20px 24px; border-top: 1px solid #ebe4d8; text-align: center;">
+              <p style="margin: 0 0 4px 0; font-size: 12px; font-weight: 600; color: #5b534a;">
                 SupportSystem &bull; 1-to-1 Mentorship & Clarity Space
               </p>
-              <p style="margin: 0 0 8px 0; font-size: 11px; line-height: 1.5; color: #877c70;">
-                Have questions or need to reschedule? Simply reply directly to this email at <a href="mailto:supportsystem22@gmail.com" style="color: #dc3c1c; text-decoration: underline;">supportsystem22@gmail.com</a>.
+              <p style="margin: 0 0 6px 0; font-size: 11px; line-height: 1.4; color: #877c70;">
+                Have questions or need to reschedule? Contact us at <a href="mailto:supportsystem22@gmail.com" style="color: #dc3c1c; text-decoration: underline;">supportsystem22@gmail.com</a>.
               </p>
               <p style="margin: 0; font-size: 10px; color: #9c9183;">
-                You received this transactional confirmation because you completed a booking on SupportSystem.
+                You received this transactional receipt because you completed a booking on SupportSystem.
               </p>
             </td>
           </tr>
@@ -363,7 +357,8 @@ supportsystem22@gmail.com
         html: customerHtml,
         headers: {
           'X-Entity-Ref-ID': payload.bookingId,
-          'X-Mailer': 'SupportSystem Booking Notifier',
+          'Auto-Submitted': 'auto-generated',
+          'X-Auto-Response-Suppress': 'All',
         },
       });
       customerSent = true;
@@ -377,12 +372,11 @@ supportsystem22@gmail.com
   // 2. MENTOR NOTIFICATION EMAIL
   // ==========================================
   if (mentorEmail && mentorEmail.includes('@')) {
-    const mentorSubject = `New Booking: ${payload.customerName} - ${payload.packageTitle} (${payload.sessionDate} at ${payload.sessionTime})`;
-    const mentorPreheader = `New booking from ${payload.customerName} (${payload.customerPhone}). Mode: ${modeLabel}. Paid: ₹${payload.packagePrice}.`;
+    const mentorSubject = `[New Booking] ${payload.customerName} - ${payload.packageTitle}`;
 
     const mentorPlainText = `
 SupportSystem - New Booking Received
---------------------------------------------------
+==================================================
 Customer: ${payload.customerName} has booked a session!
 
 CUSTOMER PROFILE:
@@ -427,27 +421,23 @@ TRANSACTION DETAILS:
   </style>
 </head>
 <body style="margin: 0; padding: 0; background-color: #f7f5f0; color: #1c1a18;">
-  
-  <div style="display: none; font-size: 1px; color: #f7f5f0; line-height: 1px; max-height: 0px; max-width: 0px; opacity: 0; overflow: hidden;">
-    ${mentorPreheader} &zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;
-  </div>
 
   <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f7f5f0;">
     <tr>
-      <td align="center" style="padding: 30px 15px;">
+      <td align="center" style="padding: 26px 15px;">
         
-        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 580px; background-color: #ffffff; border: 1px solid #e5ded2; border-radius: 18px; overflow: hidden; box-shadow: 0 4px 18px rgba(0,0,0,0.05);">
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 580px; background-color: #ffffff; border: 1px solid #e5ded2; border-radius: 16px; overflow: hidden;">
           
           <!-- Header -->
           <tr>
-            <td style="background-color: #1c1a18; padding: 24px 26px; border-bottom: 3px solid #dc3c1c;">
+            <td style="background-color: #1c1a18; padding: 22px 24px; border-bottom: 3px solid #dc3c1c;">
               <table border="0" cellpadding="0" cellspacing="0" width="100%">
                 <tr>
                   <td>
                     <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #dc3c1c; letter-spacing: 0.8px;">
-                      🚨 New Booking Notification
+                      New Booking Notification
                     </div>
-                    <div style="font-size: 19px; font-weight: 800; color: #ffffff; margin-top: 4px;">
+                    <div style="font-size: 18px; font-weight: 800; color: #ffffff; margin-top: 4px;">
                       ${payload.customerName} has booked a session!
                     </div>
                   </td>
@@ -458,41 +448,41 @@ TRANSACTION DETAILS:
 
           <!-- Body -->
           <tr>
-            <td style="padding: 28px 24px;">
+            <td style="padding: 26px 22px;">
               
               <!-- Customer Profile Card -->
-              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #fff8f6; border: 1px solid #f6dbd4; border-radius: 14px; margin-bottom: 20px;">
+              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #fff8f6; border: 1px solid #f6dbd4; border-radius: 12px; margin-bottom: 18px;">
                 <tr>
-                  <td style="padding: 16px 18px;">
-                    <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #dc3c1c; letter-spacing: 0.5px; margin-bottom: 8px;">
+                  <td style="padding: 14px 16px;">
+                    <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #dc3c1c; letter-spacing: 0.5px; margin-bottom: 6px;">
                       Mentee Profile & Contact
                     </div>
                     <table border="0" cellpadding="0" cellspacing="0" width="100%">
                       <tr>
-                        <td style="font-size: 13px; color: #5b534a; padding: 3px 0;"><strong>Full Name:</strong></td>
-                        <td align="right" style="font-size: 14px; font-weight: 700; color: #1c1a18;">${payload.customerName}</td>
+                        <td style="font-size: 12px; color: #5b534a; padding: 2px 0;"><strong>Full Name:</strong></td>
+                        <td align="right" style="font-size: 13px; font-weight: 700; color: #1c1a18;">${payload.customerName}</td>
                       </tr>
                       <tr>
-                        <td style="font-size: 13px; color: #5b534a; padding: 3px 0;"><strong>Email:</strong></td>
-                        <td align="right" style="font-size: 13px; color: #dc3c1c;">
+                        <td style="font-size: 12px; color: #5b534a; padding: 2px 0;"><strong>Email:</strong></td>
+                        <td align="right" style="font-size: 12px; color: #dc3c1c;">
                           <a href="mailto:${payload.customerEmail}" style="color: #dc3c1c; text-decoration: none;">${payload.customerEmail}</a>
                         </td>
                       </tr>
                       <tr>
-                        <td style="font-size: 13px; color: #5b534a; padding: 3px 0;"><strong>Phone:</strong></td>
-                        <td align="right" style="font-size: 13px;">
-                          <a href="https://wa.me/${cleanPhone}" target="_blank" style="display: inline-block; background-color: #e8f5e9; color: #2e7d32; font-weight: 700; padding: 3px 10px; border-radius: 8px; text-decoration: none; font-size: 12px;">
-                            💬 ${payload.customerPhone} (WhatsApp)
+                        <td style="font-size: 12px; color: #5b534a; padding: 2px 0;"><strong>Phone:</strong></td>
+                        <td align="right" style="font-size: 12px;">
+                          <a href="https://wa.me/${cleanPhone}" target="_blank" style="display: inline-block; background-color: #e8f5e9; color: #2e7d32; font-weight: 700; padding: 2px 8px; border-radius: 6px; text-decoration: none; font-size: 11px;">
+                            ${payload.customerPhone} (Open WhatsApp)
                           </a>
                         </td>
                       </tr>
                       <tr>
-                        <td style="font-size: 13px; color: #5b534a; padding: 3px 0;"><strong>Age / Gender:</strong></td>
-                        <td align="right" style="font-size: 13px; color: #1c1a18;">${payload.customerAge || 'N/A'} yrs &bull; ${payload.customerGender || 'N/A'}</td>
+                        <td style="font-size: 12px; color: #5b534a; padding: 2px 0;"><strong>Age / Gender:</strong></td>
+                        <td align="right" style="font-size: 12px; color: #1c1a18;">${payload.customerAge || 'N/A'} yrs &bull; ${payload.customerGender || 'N/A'}</td>
                       </tr>
                       <tr>
-                        <td style="font-size: 13px; color: #5b534a; padding: 3px 0;"><strong>Preferred Language:</strong></td>
-                        <td align="right" style="font-size: 13px; font-weight: 600; color: #1c1a18;">${payload.preferredLanguage || 'English'}</td>
+                        <td style="font-size: 12px; color: #5b534a; padding: 2px 0;"><strong>Preferred Language:</strong></td>
+                        <td align="right" style="font-size: 12px; font-weight: 600; color: #1c1a18;">${payload.preferredLanguage || 'English'}</td>
                       </tr>
                     </table>
                   </td>
@@ -500,38 +490,38 @@ TRANSACTION DETAILS:
               </table>
 
               <!-- Scheduled Slot & Zoom Info -->
-              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #fbf9f6; border: 1px solid #ebe4d8; border-radius: 14px; margin-bottom: 20px;">
+              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #fbf9f6; border: 1px solid #ebe4d8; border-radius: 12px; margin-bottom: 18px;">
                 <tr>
-                  <td style="padding: 16px 18px;">
-                    <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #877c70; letter-spacing: 0.5px; margin-bottom: 8px;">
+                  <td style="padding: 14px 16px;">
+                    <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #877c70; letter-spacing: 0.5px; margin-bottom: 6px;">
                       Session & Schedule
                     </div>
                     <table border="0" cellpadding="0" cellspacing="0" width="100%">
                       <tr>
-                        <td style="font-size: 13px; color: #5b534a; padding: 3px 0;"><strong>Package:</strong></td>
-                        <td align="right" style="font-size: 14px; font-weight: 700; color: #1c1a18;">${payload.packageTitle}</td>
+                        <td style="font-size: 12px; color: #5b534a; padding: 2px 0;"><strong>Package:</strong></td>
+                        <td align="right" style="font-size: 13px; font-weight: 700; color: #1c1a18;">${payload.packageTitle}</td>
                       </tr>
                       <tr>
-                        <td style="font-size: 13px; color: #5b534a; padding: 3px 0;"><strong>Date:</strong></td>
-                        <td align="right" style="font-size: 14px; font-weight: 700; color: #dc3c1c;">📅 ${payload.sessionDate}</td>
+                        <td style="font-size: 12px; color: #5b534a; padding: 2px 0;"><strong>Date:</strong></td>
+                        <td align="right" style="font-size: 13px; font-weight: 700; color: #dc3c1c;">📅 ${payload.sessionDate}</td>
                       </tr>
                       <tr>
-                        <td style="font-size: 13px; color: #5b534a; padding: 3px 0;"><strong>Time:</strong></td>
-                        <td align="right" style="font-size: 14px; font-weight: 700; color: #dc3c1c;">⏰ ${payload.sessionTime}</td>
+                        <td style="font-size: 12px; color: #5b534a; padding: 2px 0;"><strong>Time:</strong></td>
+                        <td align="right" style="font-size: 13px; font-weight: 700; color: #dc3c1c;">⏰ ${payload.sessionTime}</td>
                       </tr>
                       <tr>
-                        <td style="font-size: 13px; color: #5b534a; padding: 3px 0;"><strong>Mode:</strong></td>
-                        <td align="right" style="font-size: 13px; font-weight: 600; color: #1c1a18;">${modeLabel}</td>
+                        <td style="font-size: 12px; color: #5b534a; padding: 2px 0;"><strong>Mode:</strong></td>
+                        <td align="right" style="font-size: 12px; font-weight: 600; color: #1c1a18;">${modeLabel}</td>
                       </tr>
                       <tr>
-                        <td style="font-size: 13px; color: #5b534a; padding: 3px 0;"><strong>Zoom Link:</strong></td>
-                        <td align="right" style="font-size: 13px;">
+                        <td style="font-size: 12px; color: #5b534a; padding: 2px 0;"><strong>Zoom Link:</strong></td>
+                        <td align="right" style="font-size: 12px;">
                           <a href="${payload.meetingLink}" target="_blank" style="color: #dc3c1c; font-weight: 700; text-decoration: underline;">Open Zoom Meeting</a>
                         </td>
                       </tr>
                       <tr>
-                        <td style="font-size: 12px; color: #7a7064; padding: 3px 0;">Meeting ID / Passcode:</td>
-                        <td align="right" style="font-size: 12px; font-family: monospace; color: #1c1a18;">${payload.zoomMeetingId} &bull; ${payload.zoomPasscode}</td>
+                        <td style="font-size: 11px; color: #7a7064; padding: 2px 0;">Meeting ID / Passcode:</td>
+                        <td align="right" style="font-size: 11px; font-family: monospace; color: #1c1a18;">${payload.zoomMeetingId} &bull; ${payload.zoomPasscode}</td>
                       </tr>
                     </table>
                   </td>
@@ -539,19 +529,19 @@ TRANSACTION DETAILS:
               </table>
 
               <!-- Topics / Intake Notes -->
-              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #faf8f4; border: 1px solid #ebe4d8; border-radius: 14px; margin-bottom: 20px;">
+              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #faf8f4; border: 1px solid #ebe4d8; border-radius: 12px; margin-bottom: 18px;">
                 <tr>
-                  <td style="padding: 16px 18px;">
-                    <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #877c70; letter-spacing: 0.5px; margin-bottom: 6px;">
+                  <td style="padding: 14px 16px;">
+                    <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #877c70; letter-spacing: 0.5px; margin-bottom: 4px;">
                       Selected Dilemmas / Topics
                     </div>
-                    <div style="font-size: 13px; font-weight: 600; color: #1c1a18; margin-bottom: 12px;">
+                    <div style="font-size: 12px; font-weight: 600; color: #1c1a18; margin-bottom: 10px;">
                       ${topicsList}
                     </div>
-                    <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #877c70; letter-spacing: 0.5px; margin-bottom: 6px;">
+                    <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #877c70; letter-spacing: 0.5px; margin-bottom: 4px;">
                       Mentee's Personal Note
                     </div>
-                    <div style="font-size: 13px; font-style: italic; color: #4a443e; line-height: 1.5;">
+                    <div style="font-size: 12px; font-style: italic; color: #4a443e; line-height: 1.4;">
                       ${payload.notes ? `"${payload.notes}"` : 'None provided.'}
                     </div>
                   </td>
@@ -559,9 +549,9 @@ TRANSACTION DETAILS:
               </table>
 
               <!-- Transaction Summary -->
-              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-top: 1px solid #eee8de; padding-top: 14px;">
+              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-top: 1px solid #eee8de; padding-top: 12px;">
                 <tr>
-                  <td style="font-size: 12px; color: #7a7268;">
+                  <td style="font-size: 11px; color: #7a7268;">
                     <strong>Payment ID:</strong> <span style="font-family: monospace; color: #1c1a18;">${payload.paymentId}</span><br>
                     ${payload.orderId ? `<strong>Order ID:</strong> <span style="font-family: monospace; color: #1c1a18;">${payload.orderId}</span><br>` : ''}
                     <strong>Amount:</strong> <span style="color: #2e7d32; font-weight: 800;">₹${payload.packagePrice}</span> (Razorpay)<br>
@@ -575,7 +565,7 @@ TRANSACTION DETAILS:
 
           <!-- Footer -->
           <tr>
-            <td style="background-color: #1c1a18; padding: 18px 24px; text-align: center;">
+            <td style="background-color: #1c1a18; padding: 14px 20px; text-align: center;">
               <span style="color: #9c9183; font-size: 11px;">
                 SupportSystem Internal Notification &bull; supportsystem22@gmail.com
               </span>
@@ -602,7 +592,8 @@ TRANSACTION DETAILS:
         html: mentorHtml,
         headers: {
           'X-Entity-Ref-ID': payload.bookingId,
-          'X-Mailer': 'SupportSystem Booking Notifier',
+          'Auto-Submitted': 'auto-generated',
+          'X-Auto-Response-Suppress': 'All',
         },
       });
       mentorSent = true;
